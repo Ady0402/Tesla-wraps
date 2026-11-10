@@ -16,7 +16,10 @@ def main(paths):
     for p in paths:
         r = validate(p)
         status = "OK  " if r["ok"] else "FAIL"
-        print(f"{status} {r['name']:30s} {r['size'][0]}x{r['size'][1]} {r['mode']:5s} {r['bytes']:>8d} bytes")
+        alpha = {True: "alpha = template", False: f"alpha differs on {r['alpha_diff_pixels']} px",
+                 None: "alpha not compared"}[r["alpha_identical"]]
+        print(f"{status} {r['name']:30s} {r['size'][0]}x{r['size'][1]}  {r['bit_depth']}-bit {r['colour_type']:5s} "
+              f"{r['bytes']:>8d} bytes  {alpha}")
         for msg in r["problems"]:
             print(f"       - {msg}")
         bad += not r["ok"]

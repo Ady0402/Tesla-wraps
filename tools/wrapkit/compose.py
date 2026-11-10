@@ -50,6 +50,13 @@ def compose(painted: dict) -> np.ndarray:
             done[tex] |= m
     missing = (alpha > 0) & ~done
     assert not missing.any(), f"{int(missing.sum())} opaque template pixels were not painted"
+    # a view can end a few pixels short of the full bleed band: finish the band
+    # with the nearest painted colour
+    band = reach & ~done
+    if band.any():
+        _, idx = ndi.distance_transform_edt(~done, return_indices=True)
+        rgb[band] = rgb[idx[0][band], idx[1][band]]
+        done |= band
     out = np.zeros((SIZE, SIZE, 4), dtype=np.uint8)
     out[..., :3] = np.clip(np.rint(rgb), 0, 255).astype(np.uint8)
     out[..., :3][~done] = 0

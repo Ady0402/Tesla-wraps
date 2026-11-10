@@ -1,100 +1,105 @@
-"""W16 'Black Arrow' - the dark one: carbon-black body, a silver nose that
-dissolves into a star field, twin teal flow lines and a large teal number.
+"""W16 'Russell 63' - the number-panel version, after the third reference:
+a white panel on the front door with a big blocky 63, PETRONAS and a teal
+base line, broad teal stripes over the hood, and a halftone of three-pointed
+stars that grows out of the silver and shrinks into the black tail.
 """
 from __future__ import annotations
 
 import numpy as np
 
-from wrapkit import Canvas, compose, ribbon, smoothstep, spline, text_decal
+from wrapkit import Canvas, block_digits, compose, smoothstep, text_decal
 from designs.w16_common import *
 
-NAME = "W16_Black_Arrow"
-TITLE = "C - Black Arrow"
+NAME = "W16_Russell_63"
+TITLE = "C - Russell 63"
 NUMBER = "63"
+INITIALS = "GR"
+
+PANEL = (276, 92, 498, 216)     # white number panel on the front door (x0, y0, x1, y1)
 
 
 def paint_sides() -> dict:
-    s = Mirrored("side_L", base=BLACK)
+    s = Mirrored("side_L")
     c = s.art
     X, Y = c.grid()
-    c.paint(np.ones_like(X), c.gradient_field([(0, CARBON), (c.h, BLACK)], axis="y"))
+    c.paint(np.ones_like(X), metallic(c))
+    nose_fade_side(c)
 
-    # silver nose: covers the front of the fender and dissolves by the door
-    edge = 150 + (Y - 120) * 0.55
-    c.paint(1 - smoothstep(-70, 60, X - edge), metallic(c))
+    # silver -> black across the rear door
+    t = smoothstep(505, 650, X + (Y - 150) * 0.15)
+    c.paint(t, c.gradient_field([(0, CARBON), (c.h, BLACK)], axis="y"))
 
-    # star field: bright and large where the silver ends, thinning out to the tail
+    # halftone stars: so big they merge with the silver at the door gap,
+    # shrinking to specks on the black tail
     def radius(x, y):
-        d = x - (150 + (y - 120) * 0.55)
-        if d < -20:
+        d = x + (y - 150) * 0.15
+        if d < 498:
             return 0.0
-        grow = min(1.0, (d + 20) / 50.0)
-        fade = 1.0 - 0.8 * min(1.0, max(0.0, (d - 60) / 520.0))
-        return 12.5 * grow * fade
-    stars = c.mask_polygons(star_lattice(90, 900, 12, 250, 29, radius))
-    keep = 1 - c.mask_rect(330, 104, 480, 200, radius=10)       # clear space for the number
-    c.paint(stars * keep, STAR)
+        return float(np.interp(d, [498, 520, 600, 700, 800, 890], [9.0, 17.0, 13.5, 9.5, 6.0, 3.0]))
+    c.paint(c.mask_polygons(star_lattice(492, 900, 14, 250, 27, radius, inner=0.2)), SILVER_HI)
 
-    # twin teal flow lines: rise over the front arch, run the length, kick up at the tail
-    main = spline([(92, 136), (170, 104), (262, 108), (400, 222), (560, 226), (660, 214), (740, 132), (880, 104)], 22)
-    c.polygon(ribbon(main, np.interp(np.linspace(0, 1, len(main)), [0, 0.3, 0.6, 1], [2, 7, 7, 2])), TEAL)
-    thin = spline([(110, 148), (176, 118), (254, 122), (392, 234), (560, 238), (668, 226), (750, 146), (880, 118)], 22)
-    c.line(thin, 2.0, TEAL_DEEP)
+    # number panel
+    x0, y0, x1, y1 = PANEL
+    c.paint(c.mask_rect(x0, y0, x1, y1, radius=3), WHITE)
+    c.paint(c.mask_rect(x0, y1 - 15, x1, y1, radius=0), TEAL)
+    c.paint(c.mask_rect(x0, y1, x1, y1 + 3.5, radius=0), BLACK)
+    # teal-over-black flash running forward from the panel to the front wheel arch
+    c.polygon([(206, 101), (x0, 96), (x0, 109), (212, 113)], TEAL)
+    c.polygon([(212, 113), (x0, 109), (x0, 115), (216, 118)], BLACK)
 
-    s.decal(text_decal(NUMBER, F_BLACK_IT, 62, fill=TEAL, stroke=1.6, stroke_fill=WHITE, tracking=-1.5), 404, 150)
-    s.decal(wordmark("PETRONAS", 18, WHITE, tracking=0.8), 600, 176)
-    s.decal(text_decal("IWC", F_SERIF, 13, fill=BLACK, tracking=0.8), 96, 52)
+    cx = (x0 + x1) / 2
+    s.decal(block_digits(NUMBER, 44, BLACK, weight=0.23, shear=0.1), cx - 12, 126)
+    s.decal(text_decal(INITIALS, "Jura-Bold.otf", 19, fill=BLACK, tracking=-1.2), x0 + 28, 128)
+    # kit-supplier bars sit below the door handle (X 458-497, Y ~115)
+    s.decal(three_bars(19, BLACK), x1 - 34, 137)
+    s.decal(wordmark("PETRONAS", 25, BLACK, font=F_WORD, tracking=1.0), cx, 177)
+    s.decal(text_decal("IWC", F_SERIF, 17, fill="#2A2D31", tracking=1.0), 196, 68)
     return s.render()
 
 
 def paint_rails() -> dict:
     r = Mirrored("rail_L", base=BLACK)
     c = r.art
-    c.paint(c.mask_rect(20, c.h / 2 - 1.5, c.w - 20, c.h / 2 + 1.5, radius=1.5), TEAL)
+    X, Y = c.grid()
+    c.paint(1 - smoothstep(40, 150, X), SILVER)
+    # a single row of stars along the roof line, as on the reference
+    c.paint(c.mask_polygons(star_lattice(170, c.w - 14, c.h / 2 + 1, c.h / 2 + 2, 24, 7.5, stagger=False, inner=0.2)), WHITE)
     return r.render()
 
 
 def paint_mirrors() -> dict:
-    return Mirrored("mirror_L", base=TEAL).render()
+    m = Mirrored("mirror_L", base=BLACK)
+    c = m.art
+    c.paint(c.mask_rect(0, c.h * 0.36, c.w, c.h * 0.62), TEAL)
+    return m.render()
 
 
 def paint_hood():
-    c = Canvas("hood", BLACK)
-    X, Y = c.grid()
-    cx = c.w / 2
-    # silver arrow: full width at the nose, narrowing to a point at the windscreen
-    half = 26 + (Y / c.h) ** 1.25 * 150
-    arrow = smoothstep(0, 10, half - np.abs(X - cx))
-    c.paint(arrow, metallic(c, SILVER_LO, SILVER, SILVER_HI))
-    # stars spill off the arrow edges onto the black
-    def radius(x, y):
-        h = 26 + (max(0.0, y) / c.h) ** 1.25 * 150
-        d = abs(x - cx) - h
-        return 9.0 * max(0.0, 1.0 - d / 80.0) if d > 4 else 0.0
-    c.paint(c.mask_polygons(star_lattice(0, c.w, 6, c.h, 24, radius)), STAR)
-    for sgn in (-1, 1):
-        pts = [(cx + sgn * (26 + (y / c.h) ** 1.25 * 150), y) for y in np.linspace(0, c.h, 40)]
-        c.line(pts, 3.0, TEAL)
-    # keep clear of the Tesla badge that sits near the nose
-    c.stamp(text_decal(NUMBER, F_BLACK_IT, 34, fill=BLACK, tracking=-0.5), cx, 148)
+    c = Canvas("hood", SILVER)
+    hood_base(c)
+    # broad teal stripe on each hood edge with a pinstripe inside it, both
+    # running parallel to the panel line
+    c.paint(hood_edge_bands(c, 7, lambda y: float(np.interp(y, [8, 70, 236], [15, 15, 4]))), TEAL)
+    c.paint(hood_edge_bands(c, lambda y: float(np.interp(y, [8, 70, 236], [29, 29, 13])), 3.0, y1=228), TEAL)
+    # number plate high on the hood, well clear of the Tesla badge at the nose
+    c.stamp(block_plate(NUMBER, 42), c.w / 2, 104)
+    c.stamp(wordmark("PETRONAS", 11, TEAL_DEEP, font=F_WORD, tracking=1.2), c.w / 2, 150)
     return c.result()
 
 
 def paint_front():
     c = Canvas("front", SILVER)
-    X, Y = c.grid()
-    c.paint(np.ones_like(X), metallic(c))
+    bumper_base(c)
     cx = c.w / 2
-    c.paint(smoothstep(150, 235, np.abs(X - cx)), BLACK)
-    c.stamp(wordmark("PETRONAS", 14, BLACK), cx, 58)
+    c.stamp(wordmark("PETRONAS", 13, WHITE, font=F_WORD, tracking=1.6), cx, 52)
+    c.stamp(text_decal("Syntium", "Montserrat-BoldItalic.otf", 18, fill=WHITE), cx, 72)
     return c.result()
 
 
 def paint_liftgate():
     c = Canvas("liftgate", BLACK)
-    c.paint(c.mask_polygons(star_lattice(0, c.w, 150, c.h, 29, 6.0)), STAR, 0.55)
-    c.paint(c.mask_rect(110, 222, c.w - 110, 226, radius=2), TEAL)
-    c.stamp(wordmark("PETRONAS", 16, TEAL), c.w / 2, 268)
+    c.paint(c.mask_polygons(star_lattice(0, c.w, 6, c.h, 27, 6.0, inner=0.2)), SILVER_HI, 0.8)
+    liftgate_marks(c, NUMBER)
     return c.result()
 
 

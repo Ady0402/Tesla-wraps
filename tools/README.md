@@ -12,22 +12,23 @@ python3 tools/build.py w16_a      # just one
 python3 tools/check.py modely/w16/*.png   # verify Tesla's file rules
 ```
 
-Requirements: Python 3 with `numpy`, `pillow`, `scipy`; the `pngquant` and
-`optipng` binaries (only used if a file would exceed 1 MB); fonts Montserrat,
-Bebas Neue and Play on top of Liberation / Inter (Debian/Ubuntu packages
-`fonts-montserrat fonts-bebas-neue fonts-play`).
+Requirements: Python 3 with `numpy`, `pillow`, `scipy`; `optipng` (re-compresses
+every file when present) and `pngquant` (only used when a design would exceed
+900 kB); fonts Montserrat, Bebas Neue and Jura on top of Liberation / Inter.
+`bash tools/setup.sh` installs all of it on Debian/Ubuntu. Rebuilds give the
+same pixels everywhere; the exact bytes depend on the library versions.
 
 ## Layout
 
 | path | what it is |
 | --- | --- |
 | `wrapkit/template.py` | finds the 16 paintable islands of `modely/template.png` and defines the views |
-| `wrapkit/canvas.py` | 4x supersampled drawing surface, text / plate decals, splines, three-pointed stars |
+| `wrapkit/canvas.py` | 4x supersampled drawing surface, text and blocky race-number decals, splines, three-pointed stars |
 | `wrapkit/compose.py` | views -> texture (`compose`) and texture -> views (`decompose`) |
-| `wrapkit/export.py` | saves a PNG that satisfies Tesla's rules (`save_wrap`, `validate`) |
+| `wrapkit/export.py` | saves a PNG that satisfies Tesla's rules (`save_wrap`) and checks one (`validate`: container, bit depth, size, name, alpha against the template) |
 | `wrapkit/preview.py` | flat preview sheet built from the saved file |
 | `wrapkit/mock.py` | three-quarter mock-up draped over `modely/vehicle_image.png` |
-| `designs/w16_*.py` | the three designs; `designs/w16_common.py` holds palette and shared parts |
+| `designs/w16_*.py` | the four designs; `designs/w16_common.py` holds the palette, the body lines the teal accents follow, and shared parts |
 
 ## Views
 
@@ -60,7 +61,14 @@ flanks, and Tesla's diagonal stripes come out straight):
   artwork to line up across a door gap (`SEAM_OVERLAP`), and the fender /
   quarter islands sit a few pixels out of register vertically (`V_SHIFT`).
 * The band at the very bottom of the `front` view is the recessed lower grille;
-  keep graphics out of it.
+  keep graphics out of it. The Tesla badges sit at the nose of the hood and in
+  the narrow neck of the liftgate; the lower lobe of the liftgate is the
+  number-plate recess.
+* Body lines (from Tesla's `Sketch` example): the lower door crease runs from
+  about (290, 211) to (600, 193) in the side view, the door handles are at
+  X 458-497 / Y 115 and X 657-701 / Y 95, the fender camera at X 254-274 / Y 125.
+* The roof rail runs about 250 px "ahead" of the flank: rail X is roughly
+  side X minus 250.
 
 The preview and mock-up are approximations made from the saved file. The car
 and the Tesla app are the final judge.

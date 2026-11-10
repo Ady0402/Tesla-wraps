@@ -292,6 +292,63 @@ def box_decal(w: float, h: float, fill, radius: float = 0.0, outline=None,
     return im
 
 
+_SEGMENTS = {  # seven-segment map: a top, b top-right, c bottom-right, d bottom,
+    "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc",   # e bottom-left, f top-left, g middle
+    "5": "afgcd", "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abfgcd",
+}
+
+
+def block_digits(text: str, height: float, fill="#000000", weight: float = 0.2,
+                 aspect: float = 0.62, gap: float = 0.16, shear: float = 0.0,
+                 chamfer: float = 0.5) -> Image.Image:
+    """Race number in squared, blocky digits (the look of an F1 number panel).
+
+    height   digit height in texture pixels
+    weight   stroke thickness as a fraction of the height
+    aspect   digit width / height
+    gap      space between digits as a fraction of the height
+    chamfer  size of the cut on the outer corners, in stroke widths
+    """
+    H = height * SS
+    t = weight * H
+    w = aspect * H
+    g = gap * H
+    n = len(text)
+    im = Image.new("L", (int(math.ceil(n * w + (n - 1) * g)) + 2, int(math.ceil(H)) + 2), 0)
+    d = ImageDraw.Draw(im)
+    for i, ch in enumerate(text):
+        x0 = 1 + i * (w + g)
+        y0, y1, ym = 1, 1 + H, 1 + H / 2
+        x1 = x0 + w
+        if ch == "1":                      # a lone right-hand stroke looks lost: centre it
+            x0, x1 = x0 + w * 0.2, x1 - w * 0.2
+        rects = {
+            "a": (x0, y0, x1, y0 + t), "d": (x0, y1 - t, x1, y1), "g": (x0, ym - t / 2, x1, ym + t / 2),
+            "f": (x0, y0, x0 + t, ym + t / 2), "e": (x0, ym - t / 2, x0 + t, y1),
+            "b": (x1 - t, y0, x1, ym + t / 2), "c": (x1 - t, ym - t / 2, x1, y1),
+        }
+        segs = _SEGMENTS.get(ch, "")
+        for k in segs:
+            d.rectangle(rects[k], fill=255)
+        c = chamfer * t
+        if c > 0:  # cut the outer corners that the digit actually uses
+            if "a" in segs and "f" in segs:
+                d.polygon([(x0 - 1, y0 - 1), (x0 + c, y0 - 1), (x0 - 1, y0 + c)], fill=0)
+            if "a" in segs and "b" in segs:
+                d.polygon([(x1 + 1, y0 - 1), (x1 - c, y0 - 1), (x1 + 1, y0 + c)], fill=0)
+            if "d" in segs and "e" in segs:
+                d.polygon([(x0 - 1, y1 + 1), (x0 + c, y1 + 1), (x0 - 1, y1 - c)], fill=0)
+            if "d" in segs and "c" in segs:
+                d.polygon([(x1 + 1, y1 + 1), (x1 - c, y1 + 1), (x1 + 1, y1 - c)], fill=0)
+    col = tuple(int(v) for v in rgb(fill))
+    out = Image.new("RGBA", im.size, col + (0,))
+    out.putalpha(im)
+    if shear:
+        out = _shear(out, shear)
+    bbox = out.getbbox()
+    return out.crop(bbox) if bbox else out
+
+
 def layer(*parts) -> Image.Image:
     """Stack decals centred on each other.  parts: decal or (decal, dx, dy)
     with offsets in texture pixels."""

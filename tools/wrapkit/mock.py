@@ -90,7 +90,9 @@ def _maps():
         v = views()[name]
         src = np.array([p[1] for p in pairs], dtype=np.float64)   # render
         dst = np.array([p[0] for p in pairs], dtype=np.float64)   # view
-        rbf = RBFInterpolator(src, dst, kernel="thin_plate_spline", smoothing=2.0)
+        # heavy smoothing: hand-placed landmarks are only good to a few pixels, and
+        # an exact fit would make straight stripes wobble
+        rbf = RBFInterpolator(src, dst, kernel="thin_plate_spline", smoothing=400.0)
         x0, y0 = np.floor(src.min(0)).astype(int) - 12
         x1, y1 = np.ceil(src.max(0)).astype(int) + 12
         x0, y0, x1, y1 = max(0, x0), max(0, y0), min(W, x1), min(H, y1)
@@ -145,13 +147,18 @@ def mockup(wrap_path, scale: float = 1.0) -> Image.Image:
     mirror = np.asarray(_poly_mask((W, H), MIRROR_POLY)) & (lum > 60)
     out[mirror] = np.clip(mean_rgb(dv["mirror_L"]) * shade_all[mirror], 0, 255)
     painted |= mirror
-    # A-pillar + roof rail: bright body pixels above the window line
-    rail = (lum > 95) & ~painted & (xx > 425) & (yy < 524 - (xx - 462) * 0.47)
+    # A-pillar + roof rail.  The near rail follows a known arc in the render;
+    # bright roof-edge pixels away from it belong to the far rail.
     strip = dv["rail_L"]
     cols = np.stack([mean_rgb(strip, x, x + 8) for x in range(0, strip.shape[1] - 8, 8)])
-    idx = np.clip(((xx[rail] - 430) / 400.0 * len(cols)).astype(int), 0, len(cols) - 1)
-    out[rail] = np.clip(cols[idx] * shade_all[rail], 0, 255)
-    painted |= rail
+    above = (lum > 95) & ~painted & (xx > 225) & (yy < 524 - (xx - 462) * 0.47)
+    arc_y = np.interp(xx, [455, 470, 530, 630, 730, 810, 845], [520, 510, 400, 340, 320, 350, 378])
+    near = above & (xx >= 455) & (np.abs(yy - arc_y) < 20)
+    far = above & ~near
+    for region, x0, span in ((near, 440.0, 400.0), (far, 240.0, 560.0)):
+        idx = np.clip(((xx[region] - x0) / span * len(cols)).astype(int), 0, len(cols) - 1)
+        out[region] = np.clip(cols[idx] * shade_all[region], 0, 255)
+        painted |= region
     # corner of the rear bumper behind the wheel
     tail = (lum > 70) & ~painted & (xx > 826) & (yy > 384) & (yy < 500)
     out[tail] = np.clip(mean_rgb(dv["rear"], 6, 70) * shade_all[tail], 0, 255)

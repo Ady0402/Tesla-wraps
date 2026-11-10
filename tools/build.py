@@ -2,7 +2,7 @@
 """Build the W16 tribute wraps for the legacy Model Y.
 
     python3 tools/build.py            # all designs
-    python3 tools/build.py w16_a      # one design
+    python3 tools/build.py w16_a      # one design (w16_a .. w16_d)
 
 Each design module in tools/designs/ exposes NAME, TITLE and build() -> RGBA
 texture.  Wraps are written to modely/w16/<NAME>.png; a flat preview sheet and
@@ -23,7 +23,7 @@ from wrapkit.mock import save_mockup  # noqa: E402
 
 REPO = HERE.parent
 OUT = REPO / "modely" / "w16"
-DESIGNS = ["w16_a", "w16_b", "w16_c"]
+DESIGNS = ["w16_a", "w16_b", "w16_c", "w16_d"]
 
 
 def build_one(mod_name: str, out_dir: Path = OUT) -> dict:

@@ -100,11 +100,10 @@ def side_elevation(dv: dict, side: str, scale: float = 2.0) -> Image.Image:
 
 
 def _on_bg(arr, scale):
+    """Scale a view; it stays transparent outside the panel so neighbouring
+    views (liftgate over rear bumper) can interlock like they do on the car."""
     im = Image.fromarray(arr)
-    im = im.resize((int(im.width * scale), int(im.height * scale)), Image.LANCZOS)
-    bg = Image.new("RGBA", im.size, BG + (255,))
-    bg.alpha_composite(im)
-    return bg
+    return im.resize((int(im.width * scale), int(im.height * scale)), Image.LANCZOS)
 
 
 def sheet(wrap_path, title: str = "", subtitle: str = "") -> Image.Image:
