@@ -1,8 +1,8 @@
 #!/bin/bash
-# Toolchain for tools/build.py (the wrap PNG generator). Debian/Ubuntu, run as root.
-# Safe to re-run. Never fails hard: a missing tool only matters when rebuilding wraps.
+# Tesla-wraps: fonts, PNG tools and Python packages for tools/build.py (wrap generator).
+# Never fails hard: a missing tool only matters when rebuilding wraps. Debian/Ubuntu, run as root.
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq || echo "setup: apt-get update failed, using cached package lists"
+apt-get update -qq || echo "setup: apt-get update failed, using cached lists"
 apt-get install -y -qq --no-install-recommends pngquant optipng \
   fonts-montserrat fonts-bebas-neue fonts-jura fonts-liberation fonts-inter fonts-dejavu-core \
   || echo "setup: apt packages were not installed"
