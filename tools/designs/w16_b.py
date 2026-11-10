@@ -83,8 +83,6 @@ def paint_sides() -> dict:
 def paint_rails() -> dict:
     r = Mirrored("rail_L", base=BLACK)
     c = r.art
-    X, Y = c.grid()
-    c.paint(1 - smoothstep(30, 110, X), SILVER)
     for txt, x, font in (("CROWDSTRIKE", 236, F_COND), ("SOLERA", 336, F_SANS), ("WhatsApp", 428, F_SANS)):
         r.decal(text_decal(txt, font, 11 if font == F_COND else 9.5, fill=WHITE, tracking=0.5), x, c.h / 2 + 1)
     return r.render()

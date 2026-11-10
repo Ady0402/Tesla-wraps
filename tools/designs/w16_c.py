@@ -60,8 +60,6 @@ def paint_sides() -> dict:
 def paint_rails() -> dict:
     r = Mirrored("rail_L", base=BLACK)
     c = r.art
-    X, Y = c.grid()
-    c.paint(1 - smoothstep(40, 150, X), SILVER)
     # a single row of stars along the roof line, as on the reference
     c.paint(c.mask_polygons(star_lattice(170, c.w - 14, c.h / 2 + 1, c.h / 2 + 2, 24, 7.5, stagger=False, inner=0.2)), WHITE)
     return r.render()

@@ -1,15 +1,15 @@
 """W16 'Silver Arrow' - the clean version, closest to the touchscreen reference.
 
 Silver nose and front doors, a blocky number plate and PETRONAS on the front
-door, one straight teal band laid on the lower door crease with a black rocker
-beneath it, and a three-pointed-star field that takes over as the body fades
-to black toward the tail.
+door, one straight teal band along the bottom of the door, broad teal bands on
+the hood's edges with a big race number between them, and a three-pointed-star
+field that takes over as the body fades to black toward the tail.
 """
 from __future__ import annotations
 
 import numpy as np
 
-from wrapkit import Canvas, compose, smoothstep, text_decal
+from wrapkit import Canvas, block_digits, compose, smoothstep, text_decal
 from designs.w16_common import *
 
 NAME = "W16_Silver_Arrow"
@@ -40,42 +40,39 @@ def paint_sides() -> dict:
         return r if r >= 5 else 0.0
     c.paint(c.mask_polygons(star_lattice(486, 900, 16, 250, 36, radius, inner=0.15)), WHITE)
 
-    # one straight teal band on the lower door crease, black rocker under it
-    c.paint(rocker(c, 240, 700, 13), black)
-    c.paint(crease_band(c, 266, 492, 13, end_slant=-16), TEAL)
+    # one straight teal band along the bottom edge of the front door
+    c.paint(c.mask_polygon([(268, SILL_Y - 15), (496, SILL_Y - 15), (490, SILL_Y - 3), (268, SILL_Y - 3)]), TEAL)
     # teal flash at the foot of the A-pillar (continues onto the roof rail)
     c.polygon([(244, 50), (272, 46), (280, 74), (262, 78)], TEAL)
 
-    s.decal(block_plate(NUMBER, 48), 372, 128)
-    s.decal(wordmark("PETRONAS", 22, BLACK), 392, 180)
-    s.decal(text_decal("IWC", F_SERIF, 27, fill=BLACK, tracking=1.2), 176, 74)
+    s.decal(block_plate(NUMBER, 50), 372, 124)
+    s.decal(wordmark("PETRONAS", 25, BLACK), 392, 182)
+    s.decal(text_decal("IWC", F_SERIF, 31, fill=BLACK, tracking=1.4), 176, 76)
     return s.render()
 
 
 def paint_rails() -> dict:
-    r = Mirrored("rail_L")
+    # black A-pillar and roof rail, with the teal flash carried over the foot of the A-pillar
+    r = Mirrored("rail_L", base=BLACK)
     c = r.art
-    X, Y = c.grid()
-    c.paint(np.ones_like(X), SILVER)
-    # the rail sits roughly 250 px "ahead" of the flank (rail X ~ side X - 250),
-    # so this fade lies above the one on the rear door
-    c.paint(smoothstep(235, 360, X), BLACK)
-    # the first few pixels are the foot of the A-pillar: continue the teal flash
     c.paint(c.mask_rect(-2, -2, 11, c.h + 2), TEAL)
     return r.render()
 
 
 def paint_mirrors() -> dict:
-    return Mirrored("mirror_L", base=TEAL).render()
+    m = Mirrored("mirror_L", base=BLACK)
+    c = m.art
+    c.paint(c.mask_rect(0, c.h * 0.36, c.w, c.h * 0.62), TEAL)
+    return m.render()
 
 
 def paint_hood():
     c = Canvas("hood", SILVER)
     hood_base(c)
-    # teal follows the hood's side edges: broad at the windscreen, fine at the nose
-    c.paint(hood_edge_bands(c, 7, lambda y: float(np.interp(y, [8, 60, 236], [9, 9, 1.5]))), TEAL)
-    # number plate kept clear of the Tesla badge that sits near the nose
-    c.stamp(block_plate(NUMBER, 38), c.w / 2, 128)
+    # broad teal bands on the hood's side edges, windscreen to nose
+    c.paint(hood_edge_bands(c, 9, lambda y: float(np.interp(y, [8, 150, 238], [13, 13, 9])), y1=240), TEAL)
+    # big race number, kept clear of the Tesla badge that sits near the nose
+    c.stamp(block_digits(NUMBER, 62, BLACK, weight=0.25, shear=0.12), c.w / 2, 116)
     return c.result()
 
 

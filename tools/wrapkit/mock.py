@@ -1,9 +1,9 @@
 """Three-quarter mock-up: drape a saved wrap over Tesla's own render of the
 legacy Model Y (modely/vehicle_image.png).
 
-Hand-placed landmark pairs tie each upright view (side, hood, front bumper) to
-the render; a thin-plate spline fills in between and the render's own shading
-is multiplied back on top.  It is an illustration to help compare designs -
+Hand-placed landmark pairs tie the side and front-bumper views to the render
+(a smooth thin-plate spline fills in between); the hood is mapped from its
+traced outline.  The render's own shading is multiplied back on top.  It is an illustration to help compare designs -
 the car's real UV mapping will differ by a few centimetres here and there.
 """
 from __future__ import annotations
@@ -43,15 +43,6 @@ LANDMARKS = {
         ((878, 120), (843, 418)), ((860, 56), (822, 368)), ((800, 20), (786, 346)),
         ((745, 50), (750, 380)), ((800, 90), (806, 400)), ((850, 150), (840, 446)),
     ],
-    "hood": [
-        ((305, 3), (418, 522)), ((5, 3), (232, 430)), ((155, 30), (322, 500)),
-        ((80, 20), (268, 478)), ((235, 20), (378, 516)),
-        ((295, 100), (330, 566)), ((17, 100), (168, 462)),
-        ((262, 200), (238, 613)), ((50, 200), (98, 516)),
-        ((232, 236), (200, 632)), ((80, 236), (84, 566)), ((155, 250), (124, 618)),
-        ((155, 130), (232, 538)), ((155, 200), (158, 584)), ((220, 130), (286, 566)),
-        ((90, 130), (182, 506)),
-    ],
     "front": [
         ((264, 22), (133, 623)), ((356, 12), (200, 637)), ((395, 32), (256, 663)),
         ((440, 18), (306, 650)), ((522, 3), (372, 641)), ((492, 60), (350, 670)),
@@ -61,6 +52,45 @@ LANDMARKS = {
         ((38, 125), (76, 652)), ((120, 136), (100, 690)), ((180, 80), (96, 640)),
     ],
 }
+
+
+# Hood outline in the render, traced from Tesla's image.  Each half runs from
+# a windscreen corner down the side shut line and round the nose to the nose
+# centre.  "far" is the car's right side (view left), "near" the car's left.
+HOOD_FAR = [(222, 440), (205, 450), (170, 465), (140, 480), (107, 500), (90, 520), (82, 540),
+            (81, 560), (81, 582), (97, 603), (116, 614)]
+HOOD_NEAR = [(420, 520), (330, 566), (280, 594), (240, 617), (222, 626), (200, 634), (180, 635),
+             (142, 625), (116, 614)]
+HOOD_CROWN = 6.0   # px the middle of the hood rises above the straight chord
+
+
+def _along(poly, frac):
+    """Points at normalised arc-length positions along a polyline."""
+    p = np.asarray(poly, dtype=np.float64)
+    seg = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]
+    d = np.clip(frac, 0, 1) * seg[-1]
+    return np.stack([np.interp(d, seg, p[:, 0]), np.interp(d, seg, p[:, 1])], axis=-1)
+
+
+def _hood_forward(v):
+    """Render position of every hood-view pixel: each view row is the chord
+    between the two outline halves, so anything that hugs the hood's edge in
+    the texture hugs the shut line in the picture."""
+    m = v.mask()
+    rows = np.nonzero(m.any(1))[0]
+    xl = np.array([np.nonzero(m[y])[0][0] for y in rows], dtype=np.float64)
+    xr = np.array([np.nonzero(m[y])[0][-1] for y in rows], dtype=np.float64)
+
+    def frac(xe):
+        d = np.r_[0.0, np.cumsum(np.hypot(np.diff(xe), np.diff(rows.astype(np.float64))))]
+        return d / d[-1]
+    far, near = _along(HOOD_FAR, frac(xl)), _along(HOOD_NEAR, frac(xr))
+    ys, xs = np.nonzero(m)
+    i = np.searchsorted(rows, ys)
+    t = (xs - xl[i]) / np.maximum(xr[i] - xl[i], 1.0)
+    pts = far[i] * (1 - t[:, None]) + near[i] * t[:, None]
+    pts[:, 1] -= HOOD_CROWN * 4 * t * (1 - t)
+    return pts, xs.astype(np.float64), ys.astype(np.float64)
 
 
 # outline of the left door mirror in the render
@@ -86,6 +116,15 @@ def _maps():
     H, W = lum.shape
     out = {}
     from .compose import visible_masks
+    from scipy.interpolate import LinearNDInterpolator
+    hv = views()["hood"]
+    pts, hx, hy = _hood_forward(hv)
+    x0, y0 = np.floor(pts.min(0)).astype(int) - 2
+    x1, y1 = np.ceil(pts.max(0)).astype(int) + 3
+    gy, gx = np.mgrid[y0:y1, x0:x1]
+    back = LinearNDInterpolator(pts, np.stack([hx, hy], 1))(np.stack([gx.ravel(), gy.ravel()], 1).astype(np.float64))
+    ok = ~np.isnan(back[:, 0]) & body[gy.ravel(), gx.ravel()]
+    out["hood"] = (gy.ravel()[ok], gx.ravel()[ok], back[ok, 0], back[ok, 1])
     for name, pairs in LANDMARKS.items():
         v = views()[name]
         src = np.array([p[1] for p in pairs], dtype=np.float64)   # render
