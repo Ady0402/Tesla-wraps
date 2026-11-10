@@ -4,13 +4,16 @@
 """
 from .canvas import (SS, Canvas, block_digits, box_decal, find_font, layer, mix, rgb, ribbon,
                      smoothstep, spline, star3, text_decal)
-from .carmap import canvas_sizes, on_car, panel_box, panel_image, pixels_per_metre, silhouette
+from .carmap import (canvas_sizes, normal_image, normals, on_car, panel_box, panel_image, pixels_per_metre,
+                     silhouette)
+from .finish import Metallic, metallic
 from .compose import compose, decompose
 from .export import save_wrap, validate
 from .preview import save_sheet, sheet
 from .template import PANELS, SIZE, view, views
 
 __all__ = ["SS", "Canvas", "block_digits", "box_decal", "find_font", "layer", "mix", "rgb", "ribbon",
-           "smoothstep", "spline", "star3", "text_decal", "canvas_sizes", "on_car", "panel_box",
+           "smoothstep", "spline", "star3", "text_decal", "canvas_sizes", "normal_image", "normals",
+           "on_car", "panel_box", "Metallic", "metallic",
            "panel_image", "pixels_per_metre", "silhouette", "compose", "decompose", "save_wrap",
            "validate", "save_sheet", "sheet", "PANELS", "SIZE", "view", "views"]

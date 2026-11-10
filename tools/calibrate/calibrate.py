@@ -3,7 +3,8 @@
 
     python3 tools/calibrate/calibrate.py <mesh.json> [out-dir]
 
-Writes modely_viewmap.png and modely_projection.json (default: tools/wrapkit/data/).
+Writes modely_viewmap.png, modely_projection.json and modely_normals.png
+(default: tools/wrapkit/data/).
 See posmap.py for the input format.  The calibration in this repository was
 measured on the 3D model that the Tesla Wrap Gallery visualizer shows for the
 "Model Y (Pre-2025)"; the model itself is not part of this repository.
@@ -101,6 +102,12 @@ def main(mesh_json, out_dir):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     Image.fromarray(view, "L").save(out / "modely_viewmap.png", optimize=True)
+    # surface normal of every texel the car shows (+x = car's left, +y = up, +z = toward the nose),
+    # stored as 8-bit RGB = (n + 1) * 127.5; texels the car does not show are black
+    enc = np.zeros((N, N, 3), np.uint8)
+    on = view > 0
+    enc[on] = np.clip(np.rint((nrm[on] + 1.0) * 127.5), 1, 255).astype(np.uint8)
+    Image.fromarray(enc, "RGB").save(out / "modely_normals.png", optimize=True)
     canvases = {"side_L": [SIDE_W, SIDE_H], "side_R": [SIDE_W, SIDE_H], "hood": [HOOD["w"], HOOD["h"]],
                 "front": [FRONT["w"], FRONT["h"]], "rear": [REAR["w"], REAR["h"]], "deck": [DECK["w"], DECK["h"]]}
     json.dump(dict(pixels_per_metre=S, degree=DEG, canvases=canvases, regions=regions),

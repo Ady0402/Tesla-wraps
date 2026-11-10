@@ -119,3 +119,59 @@ def panel_box(view: str, panel: str):
     """Bounding box (x0, y0, x1, y1) of a panel in a projection canvas."""
     ys, xs = np.nonzero(panel_image(view) == PANELS[panel])
     return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+
+
+# --------------------------------------------------------------------------
+# Surface normals
+# --------------------------------------------------------------------------
+# canvas axes in world terms: (+X direction, +Y direction, toward the viewer)
+_AXES = {
+    "side_L": ((0, 0, -1), (0, -1, 0), (1, 0, 0)),
+    "side_R": ((0, 0, 1), (0, -1, 0), (-1, 0, 0)),
+    "hood": ((1, 0, 0), (0, 0, 1), (0, 1, 0)),
+    "front": ((1, 0, 0), (0, -1, 0), (0, 0, 1)),
+    "rear": ((-1, 0, 0), (0, -1, 0), (0, 0, -1)),
+    "deck": ((-1, 0, 0), (0, 0, -1), (0, 1, 0)),
+}
+
+
+@lru_cache(maxsize=1)
+def normals() -> np.ndarray:
+    """(1024, 1024, 3) float32 unit surface normal of every texel the car shows
+    (+x = the car's left, +y = up, +z = toward the nose); zero elsewhere."""
+    enc = np.asarray(Image.open(DATA / "modely_normals.png").convert("RGB")).astype(np.float32)
+    n = enc / 127.5 - 1.0
+    on = on_car()
+    n[~on] = 0.0
+    # the file stores 8 bits per component; smooth within each panel so the
+    # quantisation steps (and the model's facets) do not show in reflections
+    lab = panel_labels()
+    out = np.zeros_like(n)
+    for pid in np.unique(lab[on]):
+        m = (lab == pid) & on
+        w = ndi.gaussian_filter(m.astype(np.float32), 2.0)
+        for c in range(3):
+            out[..., c] = np.where(m, ndi.gaussian_filter(n[..., c] * m, 2.0) / np.maximum(w, 1e-6), out[..., c])
+    length = np.linalg.norm(out, axis=-1, keepdims=True)
+    return np.where(length > 0, out / np.maximum(length, 1e-6), 0.0).astype(np.float32)
+
+
+@lru_cache(maxsize=8)
+def normal_image(view: str) -> np.ndarray:
+    """(h, w, 3) normal of the surface under each pixel of a projection canvas,
+    in canvas terms: (component along +X, component along +Y, component toward
+    the viewer).  The last one is the cosine of the surface's tilt away from
+    the view, i.e. how much a shape drawn here is foreshortened on the car."""
+    w, h = canvas_sizes()[view]
+    ys, xs, X, Y = texel_coords(2)[view]
+    ax = np.asarray(_AXES[view], dtype=np.float32)
+    n = normals()[ys, xs] @ ax.T
+    img = np.zeros((h, w, 3), dtype=np.float32)
+    hit = np.zeros((h, w), dtype=bool)
+    for k in range(X.shape[1]):
+        ix, iy = np.floor(X[:, k]).astype(int), np.floor(Y[:, k]).astype(int)
+        ok = (ix >= 0) & (ix < w) & (iy >= 0) & (iy < h)
+        img[iy[ok], ix[ok]] = n[ok]
+        hit[iy[ok], ix[ok]] = True
+    _, idx = ndi.distance_transform_edt(~hit, return_indices=True)
+    return img[idx[0], idx[1]]

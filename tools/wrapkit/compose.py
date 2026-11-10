@@ -11,12 +11,15 @@ from .template import PANELS, SIZE, nearest_panel, panel_labels, template_alpha,
 BLEED = 6  # px of colour bleed painted outside each island (under alpha 0)
 
 
-def compose(painted: dict) -> np.ndarray:
+def compose(painted: dict, finish=None) -> np.ndarray:
     """painted: {canvas: array (h * r, w * r, 3)} -> uint8 RGBA texture.
 
+    finish: optional callable (rgb float texture) -> rgb, applied to the texels
+    the car shows before the hidden margin is filled (e.g. finish.metallic()).
+
     Projection canvases may be handed over at r times their nominal size (the
-    drawing surface's supersampling); each texel averages 2 x 2 bilinear
-    samples of its canvas.  Texels the car never shows, the template's hidden
+    drawing surface's supersampling); each texel averages 2 x 2 samples that
+    together cover its footprint on the canvas.  Texels the car never shows, the template's hidden
     margin and a few pixels of bleed around every island are filled with the
     nearest visible colour of the same panel.  Alpha is Tesla's template alpha.
     """
@@ -27,8 +30,14 @@ def compose(painted: dict) -> np.ndarray:
     for name, (ys, xs, X, Y) in texel_coords(2).items():
         arr = np.asarray(painted[name], dtype=np.float32)
         w, h = canvas_sizes()[name]
-        r = arr.shape[1] / w
-        assert abs(arr.shape[0] / h - r) < 1e-6, f"{name}: canvas must be a multiple of {(h, w)}"
+        r = arr.shape[1] // w
+        assert arr.shape[:2] == (h * r, w * r), f"{name}: canvas must be a multiple of {(h, w)}"
+        if r >= 4 and r % 2 == 0:
+            # box-filter to half a canvas pixel per sample, so the 2 x 2 samples
+            # of a texel cover its whole footprint (clean edges, no stair-steps)
+            f = r // 2
+            arr = arr.reshape(h * 2, f, w * 2, f, 3).mean(axis=(1, 3))
+            r = 2
         cy, cx = Y * r - 0.5, X * r - 0.5
         acc = np.zeros((len(ys), 3), dtype=np.float32)
         for c in range(3):
@@ -47,6 +56,8 @@ def compose(painted: dict) -> np.ndarray:
         rgb[v.oy:v.oy + rh, v.ox:v.ox + rw][m] = rot[m]
         done[v.oy:v.oy + rh, v.ox:v.ox + rw] |= m
     assert (done == on_car()).all()
+    if finish is not None:
+        rgb = np.asarray(finish(rgb), dtype=np.float32)
     # hidden margin + bleed: nearest visible colour of the same panel
     alpha = template_alpha()
     near = nearest_panel()

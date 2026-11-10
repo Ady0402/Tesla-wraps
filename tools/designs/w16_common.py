@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from wrapkit import (Canvas, block_digits, box_decal, layer, mix, rgb, smoothstep, star3, text_decal)
+from PIL import Image
+from scipy import ndimage as ndi
+
+from wrapkit import (Canvas, block_digits, box_decal, layer, metallic, mix, normal_image, panel_image, rgb,
+                     smoothstep, star3, text_decal)
 
 # ---- palette --------------------------------------------------------------
 SILVER = "#C6CACE"
@@ -22,6 +26,11 @@ STAR = "#D3D7DB"
 NOSE = "#B2B7BC"        # silver as it reaches the nose (hood front edge / top of the bumper)
 BUMPER_MID = "#42464B"
 BUMPER_LOW = "#131518"
+
+# the car renders a wrap as matte vinyl, so the metallic look is painted in
+# (wrapkit/finish.py): studio reflections that follow the surface, plus a
+# little light along the body lines (crease_gain)
+FINISH = metallic(1.0, crease_gain=55.0)
 
 # ---- fonts ----------------------------------------------------------------
 F_WORD = "Montserrat-ExtraBold.otf"       # PETRONAS-style wide bold caps
@@ -40,6 +49,8 @@ QUARTER = (734, 906)
 SILL_Y = 276                  # bottom edge of the doors
 HANDLE_F = (473, 513, 139)    # door handles: X0, X1, Y
 HANDLE_R = (678, 720, 127)
+REPEATER = (238, 152, 282, 163)   # side indicator on the fender (x0, y0, x1, y1): keep decals off it
+REAR_BADGE = (200.0, 90.0, 16.0)  # Tesla badge on the liftgate in the rear canvas (x, y, keep-out radius)
 BUMPER_SIDE_Y0 = 165.3        # a point at height Y on the front canvas sits at Y + this on the side canvas
 
 CREASE_X0, CREASE_Y0, CREASE_SLOPE = 390.0, 248.0, -0.09   # the lower door crease: rises toward the rear
@@ -141,10 +152,10 @@ def race_hood(c: Canvas, number: str):
     small teal wordmark ahead of it; clear of the Tesla badge at the nose."""
     hood_base(c)
     c.paint(hood_edge_bands(c, 8, lambda y: float(np.interp(y, [14, 90, 236], [15, 15, 5]))), TEAL)
-    c.paint(hood_edge_bands(c, lambda y: float(np.interp(y, [14, 90, 228], [30, 30, 14])), 3.2, y1=228), TEAL)
+    c.paint(hood_edge_bands(c, lambda y: float(np.interp(y, [14, 90, 228], [30, 30, 14])), 4.6, y1=228), TEAL)
     cx = c.w / 2 + 1
-    c.stamp(block_plate(number, 44), cx, 92)
-    c.stamp(wordmark("PETRONAS", 12, TEAL_DEEP, font=F_WORD, tracking=1.4), cx, 138)
+    c.stamp(block_plate(number, 52), cx, 96)
+    c.stamp(wordmark("PETRONAS", 13, TEAL_DEEP, font=F_WORD, tracking=1.4), cx, 146)
 
 
 def race_bumper(c: Canvas):
@@ -158,22 +169,19 @@ def race_bumper(c: Canvas):
 
 
 def rear_marks(c: Canvas):
-    """Rear elevation: a teal line under the lip of the spoiler (the Tesla
-    badge sits just below it) and one across the bumper."""
-    c.paint(c.mask_rect(70, 64, c.w - 70, 67.5, radius=1.5), TEAL)
+    """Rear elevation: one teal line across the bumper (the band of the
+    liftgate with the tail lamps is left to the star field)."""
     c.paint(c.mask_rect(112, 189, c.w - 112, 192.5, radius=1.5), TEAL)
 
 
-def paint_deck(number: str, stars=None):
-    """The liftgate from above: black frame round the rear glass, wordmark and
-    race number on top of the spoiler.  stars: optional (pitch, radius, colour, opacity)."""
+REAR_KEEP = dict(rects=[(100, 182, 304, 199)], circles=[REAR_BADGE])   # bumper line, Tesla badge
+
+
+def paint_deck(pitch, radius, colour=STAR, opacity=1.0, inner=0.17):
+    """The liftgate from above (frame of the rear glass, top of the spoiler):
+    black, filled with the same stars as the rest of the tail."""
     c = Canvas("deck", BLACK)
-    if stars:
-        pitch, radius, colour, opacity = stars
-        field = c.mask_polygons(star_lattice(0, c.w, 4, 150, pitch, radius, inner=0.17))
-        c.paint(field, colour, opacity)
-    c.stamp(wordmark("PETRONAS", 14, TEAL, tracking=0.5), 170, 203)
-    c.stamp(block_digits(number, 15, TEAL, weight=0.24, shear=0.1), 262, 203)
+    star_field(c, 0, c.w, 4, c.h, pitch, radius, colour=colour, opacity=opacity, inner=inner, margin=1.5)
     return c.out()
 
 
@@ -194,6 +202,122 @@ def star_lattice(x0, x1, y0, y1, pitch, radius, rot=0.0, inner=0.17, stagger=Tru
         y += pitch * 0.866
         row += 1
     return polys
+
+
+def _edge_distance(view: str) -> np.ndarray:
+    """Distance (px) from every canvas pixel to the nearest panel edge."""
+    p = panel_image(view)
+    edge = np.zeros(p.shape, bool)
+    edge[:-1] |= p[:-1] != p[1:]
+    edge[1:] |= p[:-1] != p[1:]
+    edge[:, :-1] |= p[:, :-1] != p[:, 1:]
+    edge[:, 1:] |= p[:, :-1] != p[:, 1:]
+    return ndi.distance_transform_edt(~edge)
+
+
+_EDGE = {}
+
+
+def on_surface(view: str, pts, cx, cy):
+    """Squash a shape drawn around (cx, cy) so that it keeps its proportions
+    on the car: in a projection a tilted surface is foreshortened along the
+    direction it tilts, so the drawing is shortened by the same factor.
+    Returns (points, factor) - factor is the cosine of the tilt."""
+    ni = normal_image(view)
+    h, w = ni.shape[:2]
+    ix, iy = int(np.clip(cx, 0, w - 1)), int(np.clip(cy, 0, h - 1))
+    nx, ny, nv = ni[iy, ix]
+    f = float(abs(nv))
+    d = np.array([nx, ny], dtype=np.float64)
+    if np.linalg.norm(d) < 1e-6 or f > 0.995:
+        return list(pts), f
+    d /= np.linalg.norm(d)
+    M = np.eye(2) - (1.0 - f) * np.outer(d, d)
+    c = np.array([cx, cy])
+    return [tuple(c + M @ (np.array(p) - c)) for p in pts], f
+
+
+def star_field(c: Canvas, x0, x1, y0, y1, pitch, radius, keep=None, inner=0.17,
+               margin=2.0, min_tilt=0.35, colour=STAR, opacity=1.0, view=None):
+    """Three-pointed stars on a triangular lattice, laid out in this canvas but
+    shaped so that every star keeps its proportions on the car: same size and
+    one arm pointing straight up everywhere.  Only whole stars are drawn: a
+    star that would cross a panel gap, an edge, a strongly foreshortened area
+    or a ``keep`` hole (boolean canvas mask, False = keep clear) is left out
+    instead of being cut.  opacity: number or callable (x, y) -> 0..1, used to
+    fade the field in and out (the stars themselves never change size)."""
+    view = view or c.view.name
+    p = panel_image(view)
+    if view not in _EDGE:
+        _EDGE[view] = _edge_distance(view)
+    edge = _EDGE[view]
+    h, w = p.shape
+    polys = []
+    for poly in star_lattice(x0, x1, y0, y1, pitch, radius, inner=inner):
+        xs = [q[0] for q in poly]
+        ys = [q[1] for q in poly]
+        cx, cy = float(np.mean(xs)), float(np.mean(ys))
+        pts, f = on_surface(view, poly, cx, cy)
+        if f < min_tilt:
+            continue
+        ok = True
+        pid = p[int(np.clip(cy, 0, h - 1)), int(np.clip(cx, 0, w - 1))]
+        for x, y in pts + [(cx, cy)]:
+            ix, iy = int(round(x)), int(round(y))
+            if not (0 <= ix < w and 0 <= iy < h) or p[iy, ix] != pid or pid == 0 or edge[iy, ix] < margin:
+                ok = False
+                break
+            if keep is not None and not keep[iy, ix]:
+                ok = False
+                break
+        if ok:
+            a = opacity(cx, cy) if callable(opacity) else opacity
+            if a > 0.02:
+                polys.append((round(float(a), 2), pts))
+    for a in sorted({a for a, _ in polys}):
+        c.paint(c.mask_polygons([pts for b, pts in polys if b == a]), colour, a)
+    return len(polys)
+
+
+def keep_clear(c: Canvas, rects=(), circles=()):
+    """Boolean canvas mask that is False inside the given rectangles
+    (x0, y0, x1, y1) and circles (x, y, r): pass it to star_field as keep."""
+    m = np.ones((c.h, c.w), bool)
+    yy, xx = np.mgrid[0:c.h, 0:c.w]
+    for x0, y0, x1, y1 in rects:
+        m &= ~((xx >= x0) & (xx <= x1) & (yy >= y0) & (yy <= y1))
+    for x, y, r in circles:
+        m &= (xx - x) ** 2 + (yy - y) ** 2 > r * r
+    return m
+
+
+def surface_decal(img: Image.Image, view: str, cx, cy) -> Image.Image:
+    """Pre-squash a decal (rendered at the canvas supersampling) so it keeps its
+    proportions on a tilted part of the body (see on_surface)."""
+    ni = normal_image(view)
+    h, w = ni.shape[:2]
+    nx, ny, nv = ni[int(np.clip(cy, 0, h - 1)), int(np.clip(cx, 0, w - 1))]
+    f = float(abs(nv))
+    d = np.array([nx, ny], dtype=np.float64)
+    if np.linalg.norm(d) < 1e-6 or f > 0.98:
+        return img
+    d /= np.linalg.norm(d)
+    M = np.eye(2) - (1.0 - f) * np.outer(d, d)          # output = M @ input, about the centre
+    Minv = np.linalg.inv(M)
+    W, H = img.size
+    c = np.array([W / 2, H / 2])
+    off = c - Minv @ c
+    return img.transform((W, H), Image.AFFINE, (Minv[0, 0], Minv[0, 1], off[0], Minv[1, 0], Minv[1, 1], off[1]),
+                         resample=Image.BICUBIC)
+
+
+def deck_band_y(x):
+    """Centre line of the top of the rear spoiler in the deck canvas."""
+    from wrapkit import silhouette
+    m = silhouette("deck")
+    xi = int(np.clip(round(x), 0, m.shape[1] - 1))
+    ys = np.nonzero(m[150:, xi])[0] + 150
+    return float((ys.min() + ys.max()) / 2) if len(ys) else 200.0
 
 
 def block_plate(number="63", size=44.0, plate=BLACK, digits=WHITE, radius=4.0):
@@ -235,23 +359,27 @@ class Mirrored:
         self.art = Canvas(left_view, base)
         self._decals = []
 
-    def decal(self, img, x, y, rot=0.0, sides="LR", opacity=1.0):
-        self._decals.append((img, x, y, rot, sides, opacity))
+    def decal(self, img, x, y, rot=0.0, sides="LR", opacity=1.0, surface=False):
+        """surface=True pre-squashes the decal so it keeps its proportions on a
+        tilted part of the body (only for the side canvases)."""
+        self._decals.append((img, x, y, rot, sides, opacity, surface))
 
     def render(self) -> dict:
         left = self.art
         right = self.art.mirrored()
-        for img, x, y, rot, sides, op in self._decals:
+        for img, x, y, rot, sides, op, surface in self._decals:
             if "L" in sides:
-                left.stamp(img, x, y, rot, op)
+                im = surface_decal(img, self.left_name, x, y) if surface else img
+                left.stamp(im, x, y, rot, op)
             if "R" in sides:
-                right.stamp(img, right.w - x, y, -rot, op)
+                im = surface_decal(img, self.right_name, right.w - x, y) if surface else img
+                right.stamp(im, right.w - x, y, -rot, op)
         return {self.left_name: left.out(), self.right_name: right.out()}
 
 
-def black_rails(teal_foot=True) -> Mirrored:
-    """Black A-pillars and roof rails; the teal flash from the top of the
-    fender can be carried over the foot of the A-pillar."""
+def black_rails(teal_foot=False) -> Mirrored:
+    """Black A-pillars and roof rails (optionally a teal patch at the foot of
+    the A-pillar)."""
     r = Mirrored("rail_L", base=BLACK)
     if teal_foot:
         r.art.paint(r.art.mask_rect(-2, -2, 11, r.art.h + 2), TEAL)
@@ -259,13 +387,10 @@ def black_rails(teal_foot=True) -> Mirrored:
 
 
 def striped_mirrors() -> dict:
-    """Black mirror caps with a teal stripe."""
+    """Black mirror caps with a teal stripe running along the car.  On the cap's
+    canvas X goes up the mirror and Y goes outward / backward along it (measured
+    on the 3D model), so a level stripe is an upright band of the canvas."""
     m = Mirrored("mirror_L", base=BLACK)
     c = m.art
-    c.paint(c.mask_rect(0, c.h * 0.36, c.w, c.h * 0.62), TEAL)
+    c.paint(c.mask_rect(c.w * 0.40, -2, c.w * 0.60, c.h + 2), TEAL)
     return m.render()
-
-
-# teal flash on the top of the fender at the foot of the A-pillar; it ties the
-# stripe on the hood's edge to whatever starts on the door
-A_PILLAR_FLASH = [(262, 100), (302, 96), (302, 124), (274, 126)]

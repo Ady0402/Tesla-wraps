@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from wrapkit import Canvas, box_decal, compose, layer, mix, smoothstep, text_decal
+from wrapkit import Canvas, block_digits, box_decal, compose, layer, mix, smoothstep, text_decal
 from designs.w16_common import *
 
 NAME = "W16_Race_Livery"
 TITLE = "B - Race Livery"
 NUMBER = "63"
+STAR_R_B = 9.0             # one star size everywhere on this design
 
 # The flow line: its top edge is one straight line, parallel to the lower door crease.
 LINE_X0, LINE_X1 = 371.0, 730.0
@@ -31,8 +32,9 @@ def line_top(x):
 
 
 def line_thickness(x):
-    """Full width under the inlet bars, a fine blade across the rear door."""
-    return np.interp(x, [LINE_X0, 503, 553, LINE_X1], [16, 16, 5, 1.5])
+    """One straight taper: full width at the foot of the bar, a point at the tail."""
+    x0 = diag_x(BAR_Y1) + 34
+    return np.interp(x, [LINE_X0, x0, LINE_X1], [16, 16, 1.5])
 
 
 def paint_sides() -> dict:
@@ -51,24 +53,23 @@ def paint_sides() -> dict:
     low = smoothstep(318, 450, X + (Y - 240) * 0.25) * smoothstep(-2, 2, Y - top - 3)
     c.paint(low, black)
 
-    # star mesh behind the front door: nearly touching above the flow line,
-    # thinning out below it and toward the tail
-    def radius(x, y):
-        grow = min(1.0, max(0.0, (x - 540) / 22.0))
-        fade = 1.0 - 0.55 * min(1.0, max(0.0, (x - 670) / 250.0))
+    # star mesh behind the front door: every star the same size; the field is
+    # brightest above the flow line and dims below it and toward the tail
+    def fade(x, y):
+        tail = 1.0 - 0.35 * min(1.0, max(0.0, (x - 670) / 250.0))
         below = y - float(line_top(x)) - 4
-        drop = 1.0 if below < 0 else max(0.0, 1.0 - below / 64.0)
-        r = 10.5 * grow * fade * drop
-        return r if r >= 3.5 else 0.0
-    stars = c.mask_polygons(star_lattice(540, 990, 48, 290, 25, radius, inner=0.19))
-    keep = 1 - c.mask_ellipse(806, 112, 39, 27)                    # room for the number roundel
-    keep = keep * (1 - c.mask_rect(820, 148, 912, 184, radius=6))  # and for the partner names below it
-    keep = keep * (1 - c.mask_rect(846, 200, 930, 246, radius=6))  # and on the bumper corner
-    c.paint(stars * keep, SILVER_HI)
+        drop = 1.0 if below < 0 else max(0.25, 1.0 - below / 60.0)
+        return tail * drop
+    keep = keep_clear(c, rects=[(820, 148, 912, 184), (846, 200, 930, 246), (560, 250, 650, 274)],
+                      circles=[(806, 112, 40)])                   # roundel, partner names, Mercedes-Benz
+    xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
+    top_, thick = line_top(xs)[None, :], line_thickness(xs)[None, :]
+    keep &= ~((ys >= top_ - 2) & (ys <= top_ + thick + 2))                   # clear of the flow line
+    star_field(c, 548, 990, 48, 290, 25, STAR_R_B, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2,
+               opacity=fade)
 
-    # teal: flash at the foot of the A-pillar, the slanted bar, and the flow line
+    # teal: the slanted bar and the flow line
     # (its front end is cut on the same slant as the bar, so the corner of the L is one clean edge)
-    c.polygon(A_PILLAR_FLASH, TEAL)
     c.polygon([(diag_x(BAR_Y0), BAR_Y0), (diag_x(BAR_Y0) + 30, BAR_Y0),
                (diag_x(BAR_Y1) + 34, BAR_Y1), (diag_x(BAR_Y1) - 4, BAR_Y1)], TEAL)
     xs = np.linspace(LINE_X0, LINE_X1, 80)
@@ -84,12 +85,13 @@ def paint_sides() -> dict:
 
     s.decal(text_decal("TeamViewer", F_SANS, 10.5, fill=WHITE), 426, 135)
     s.decal(wordmark("PETRONAS", 23.5, WHITE, tracking=0.8, stroke=1.0, stroke_fill="#2E3237"), 443, 248)
-    s.decal(wordmark("AMG", 15, BLACK, font=F_BLACK_IT, tracking=0.4, squeeze=1.25), 243, 150)
-    s.decal(text_decal("IWC", F_SERIF, 14, fill=BLACK, tracking=0.8), 176, 143)
+    # on the flat of the fender, clear of the side indicator (X 238-282, Y 152-163)
+    s.decal(wordmark("AMG", 15, BLACK, font=F_BLACK_IT, tracking=0.4, squeeze=1.25), 212, 138)
+    s.decal(text_decal("IWC", F_SERIF, 14, fill=BLACK, tracking=0.8), 160, 141)
     s.decal(text_decal("Mercedes-Benz", "LiberationSerif-BoldItalic.ttf", 11.5, fill=WHITE), 604, 262)
     # race number roundel on the rear quarter panel
     s.decal(layer(box_decal(64, 40, BLACK, radius=20, outline=TEAL, outline_width=2.4),
-                  text_decal(NUMBER, F_BLACK_IT, 25, fill=TEAL, tracking=-0.3)), 806, 112)
+                  block_digits(NUMBER, 22, TEAL, weight=0.23)), 806, 112, surface=True)
     s.decal(text_decal("Snapdragon", F_SANS, 10, fill=WHITE), 866, 159)
     s.decal(text_decal("CROWDSTRIKE", F_COND, 11.5, fill=WHITE, tracking=0.5), 866, 175)
     s.decal(wordmark("PETRONAS", 8.5, TEAL, font=F_WORD, tracking=0.8), 888, 214)
@@ -115,6 +117,7 @@ def paint_hood():
     return c.out()
 
 
+
 def paint_front():
     c = Canvas("front", SILVER)
     race_bumper(c)
@@ -123,8 +126,9 @@ def paint_front():
 
 def paint_rear():
     c = Canvas("rear", BLACK)
-    c.paint(c.mask_polygons(star_lattice(0, c.w, 80, 186, 25, 8.0, inner=0.19)), SILVER_HI, 0.85)
     rear_marks(c)
+    keep = keep_clear(c, **REAR_KEEP)
+    star_field(c, 0, c.w, 30, 240, 25, STAR_R_B, keep=keep, inner=0.19, colour=SILVER_HI, opacity=0.7, margin=1.5)
     return c.out()
 
 
@@ -136,5 +140,5 @@ def build():
     painted["hood"] = paint_hood()
     painted["front"] = paint_front()
     painted["rear"] = paint_rear()
-    painted["deck"] = paint_deck(NUMBER, stars=(25, 7.0, SILVER_HI, 0.85))
-    return compose(painted)
+    painted["deck"] = paint_deck(25, STAR_R_B, colour=SILVER_HI, opacity=0.7, inner=0.19)
+    return compose(painted, finish=FINISH)

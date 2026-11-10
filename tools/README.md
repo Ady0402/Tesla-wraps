@@ -28,12 +28,13 @@ same pixels everywhere; the exact bytes depend on the library versions.
 | `wrapkit/template.py` | finds the 16 paintable islands of `modely/template.png`; lists the canvases |
 | `wrapkit/carmap.py` | where every texel of the texture sits on the car (reads `wrapkit/data/`) |
 | `wrapkit/canvas.py` | 4x supersampled drawing surface, text and blocky race-number decals, splines, three-pointed stars |
-| `wrapkit/compose.py` | canvases -> texture (`compose`) and texture -> canvases (`decompose`) |
+| `wrapkit/compose.py` | canvases -> texture (`compose`, optionally with a `finish`) and texture -> canvases (`decompose`) |
+| `wrapkit/finish.py` | `metallic()`: studio reflections and light on the body lines, baked into the paint |
 | `wrapkit/export.py` | saves a PNG that satisfies Tesla's rules (`save_wrap`) and checks one (`validate`: container, bit depth, size, name, alpha against the template) |
 | `wrapkit/preview.py` | flat sheet of every side, built from the saved file |
 | `render_visualizer.js` | uploads wraps to the Tesla Wrap Gallery visualizer and screenshots the 3D car |
 | `calibrate/` | how `wrapkit/data/` was produced |
-| `designs/w16_*.py` | the four designs; `designs/w16_common.py` holds the palette, the body landmarks and shared parts |
+| `designs/w16_*.py` | the four designs; `designs/w16_common.py` holds the palette, the body landmarks, the star field and other shared parts |
 
 ## Canvases
 
@@ -46,9 +47,9 @@ texel per pixel on the doors).
 | `hood` | 332 x 256 | the hood from above, as seen by someone standing in front: windscreen at the top, nose at the bottom |
 | `front` | 404 x 124 | front elevation: the front-facing part of the front bumper |
 | `rear` | 404 x 252 | rear elevation: the upright faces of the liftgate and the rear bumper |
-| `deck` | 404 x 232 | the liftgate from above, seen from behind: frame of the rear glass and the top of the spoiler |
+| `deck` | 404 x 232 | the liftgate from above, seen from behind: frame of the rear glass and the top of the spoiler (the band over the tail lamps) |
 | `rail_L` / `rail_R` | 502 x 46 | A-pillar and roof rail as a straight strip (only the middle ~14 px are on the car) |
-| `mirror_L` / `mirror_R` | about 53 x 88 | mirror cap |
+| `mirror_L` / `mirror_R` | about 53 x 88 | mirror cap. Canvas X runs **up** the mirror and Y outward along it, so a level stripe on the car is an upright band of the canvas |
 
 `designs.w16_common.Mirrored` paints one side and mirrors it to the other,
 while decals (text, numbers) are stamped un-mirrored on both.
@@ -56,7 +57,32 @@ while decals (text, numbers) are stamped un-mirrored on both.
 Landmarks on `side_L` (measured, see `designs/w16_common.py`): fender X 43-300,
 front door 288-533, rear door 533-748, quarter panel 734-906; window line Y 122
 falling to 96 toward the tail; sill Y 276; door handles at X 473-513 / Y 139 and
-X 678-720 / Y 127; the lower door crease runs from about (390, 248) to (590, 230).
+X 678-720 / Y 127; side indicator on the fender X 238-282 / Y 152-163; the lower
+door crease runs from about (390, 248) to (590, 230). On `rear` the Tesla badge
+sits at about (200, 90).
+
+## Stars
+
+`designs.w16_common.star_field` lays three-pointed stars out on a lattice in a
+canvas and draws them so that, **on the car**, every star has the same size and
+one arm pointing straight up: where the surface is tilted away from the view
+the star is pre-squashed by the same amount the projection foreshortens it.
+Only whole stars are drawn - a star that would cross a panel gap, an edge, a
+strongly curved area or a keep-clear zone (`keep_clear`) is left out rather
+than cut. Fades are done with brightness, never with size.
+
+## Metallic finish
+
+The car and the app render a wrap as matte vinyl, so a metallic look has to be
+painted in. `wrapkit.finish.metallic()` does it per texel from the surface
+normal (`wrapkit/data/modely_normals.png`): it shades the paint with what a
+simple photo studio would mirror for a viewer beside the car - dark floor and
+horizon band, a bright horizon line, sky and an overhead light box - and adds a
+little light where the body bends sharply (`crease_gain`). The light and dark
+edges therefore land on the body lines: the shoulder, the lower door crease,
+the wheel arches and the hood edges. The designs use
+`FINISH = metallic(1.0, crease_gain=55.0)` in `designs/w16_common.py`; lower
+`strength` (0..1) for a softer look or set it to 0 for flat paint.
 
 ## Where the mapping comes from
 
@@ -72,6 +98,8 @@ for "Model Y (Pre-2025)"; the model itself is not in this repository):
 * `modely_projection.json` - per panel, a polynomial from texel coordinates to
   canvas coordinates. Fit error is below 0.5 px on the body sides and the hood
   and about 1 px on the bumpers and liftgate.
+* `modely_normals.png` - the smooth surface normal of every texel the car
+  shows, 8 bits per component (smoothed within each panel when read).
 
 An earlier version of this kit guessed the mapping from Tesla's example wraps
 (assuming the side islands overlap at the door gaps). That guess was wrong by

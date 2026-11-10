@@ -3,6 +3,7 @@ position and face normal of the surface that samples it.
 
 Input is a JSON list of meshes, one object per mesh that takes the wrap:
     {"isWrap": true, "path": "ROOT/Door_LF/mesh", "pos": [x, y, z, ...] (world, metres),
+     "nrm": [nx, ny, nz, ...] (world vertex normals, optional),
      "uv": [u, v, ...] (the UV set the wrap is sampled with, v = 0 at the top), "idx": [i, j, k, ...]}
 Axes: +x = the car's left, +y = up, +z = toward the nose.
 """
@@ -19,7 +20,10 @@ def load(path):
         P = np.array(m["pos"], dtype=np.float64).reshape(-1, 3)
         U = np.array(m["uv"], dtype=np.float64).reshape(-1, 2)
         I = np.array(m["idx"], dtype=np.int64).reshape(-1, 3)
-        out.append((m.get("path", ""), P, U, I))
+        Nv = np.array(m["nrm"], dtype=np.float64).reshape(-1, 3) if m.get("nrm") else None
+        if Nv is not None:
+            Nv /= np.linalg.norm(Nv, axis=1, keepdims=True) + 1e-12
+        out.append((m.get("path", ""), P, U, I, Nv))
     return out
 
 
@@ -27,7 +31,7 @@ def rasterise(meshes, N):
     pos = np.full((N, N, 3), np.nan, dtype=np.float32)
     nrm = np.zeros((N, N, 3), dtype=np.float32)
     part = np.full((N, N), -1, dtype=np.int16)
-    for k, (_, P, U, I) in enumerate(meshes):
+    for k, (_, P, U, I, Nv) in enumerate(meshes):
         uv = U * N                                   # texel coordinates, pixel centres at +0.5
         for tri in I:
             a, b, c = uv[tri]
@@ -48,10 +52,15 @@ def rasterise(meshes, N):
                 continue
             pa, pb, pc = P[tri]
             p = w0[..., None] * pa + w1[..., None] * pb + w2[..., None] * pc
-            n = np.cross(pb - pa, pc - pa)
-            n = n / (np.linalg.norm(n) + 1e-12)
+            if Nv is not None:              # smooth shading normal, as the renderer uses
+                na, nb, nc = Nv[tri]
+                n = w0[..., None] * na + w1[..., None] * nb + w2[..., None] * nc
+                n = n / (np.linalg.norm(n, axis=-1, keepdims=True) + 1e-12)
+            else:                           # flat face normal
+                n = np.cross(pb - pa, pc - pa)
+                n = np.broadcast_to(n / (np.linalg.norm(n) + 1e-12), p.shape)
             sl = (slice(y0, y1 + 1), slice(x0, x1 + 1))
             pos[sl][inside] = p[inside]
-            nrm[sl][inside] = n
+            nrm[sl][inside] = n[inside]
             part[sl][inside] = k
     return pos, nrm, part

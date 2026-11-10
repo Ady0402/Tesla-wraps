@@ -13,6 +13,7 @@ from designs.w16_common import *
 NAME = "W16_Russell_63"
 TITLE = "C - Russell 63"
 NUMBER = "63"
+STAR_R_C = 9.5             # one star size everywhere on this design
 INITIALS = "GR"
 
 PANEL = (301, 133, 523, 256)     # white number panel on the front door (x0, y0, x1, y1)
@@ -28,14 +29,12 @@ def paint_sides() -> dict:
     t = smoothstep(532, 678, X + (Y - 190) * 0.15)
     c.paint(t, c.gradient_field([(60, CARBON), (c.h, BLACK)], axis="y"))
 
-    # halftone stars: so big they merge with the silver at the door gap,
-    # shrinking to specks on the black tail
-    def radius(x, y):
+    # stars all the same size: bright where the silver gives way to black,
+    # dimming toward the tail
+    def fade(x, y):
         d = x + (y - 190) * 0.15
-        if d < 536:
-            return 0.0
-        return float(np.interp(d, [536, 552, 628, 728, 828, 920], [9.0, 17.0, 13.5, 9.5, 6.0, 3.0]))
-    c.paint(c.mask_polygons(star_lattice(530, 990, 44, 290, 27, radius, inner=0.2)), SILVER_HI)
+        return float(np.interp(d, [536, 560, 700, 920], [0.0, 1.0, 0.85, 0.4]))
+    star_field(c, 540, 990, 44, 290, 27, STAR_R_C, inner=0.2, colour=SILVER_HI, margin=1.5, opacity=fade)
 
     # number panel
     x0, y0, x1, y1 = PANEL
@@ -45,7 +44,6 @@ def paint_sides() -> dict:
     # teal-over-black flash running forward from the panel across the fender
     c.polygon([(231, 143), (x0, 138), (x0, 151), (237, 155)], TEAL)
     c.polygon([(237, 155), (x0, 151), (x0, 157), (241, 160)], BLACK)
-    c.polygon(A_PILLAR_FLASH, TEAL)
 
     cx = (x0 + x1) / 2
     s.decal(block_digits(NUMBER, 44, BLACK, weight=0.23, shear=0.1), cx - 12, 170)
@@ -53,7 +51,8 @@ def paint_sides() -> dict:
     # kit-supplier bars sit below the door handle (X 473-513, Y 139)
     s.decal(three_bars(19, BLACK), x1 - 34, 180)
     s.decal(wordmark("PETRONAS", 25, BLACK, font=F_WORD, tracking=1.0), cx, 218)
-    s.decal(text_decal("IWC", F_SERIF, 16, fill="#2A2D31", tracking=1.0), 196, 128)
+    # on the flat of the fender, level with the flash (higher up it folds onto the shoulder)
+    s.decal(text_decal("IWC", F_SERIF, 16, fill="#2A2D31", tracking=1.0), 190, 148)
     return s.render()
 
 
@@ -80,8 +79,9 @@ def paint_front():
 
 def paint_rear():
     c = Canvas("rear", BLACK)
-    c.paint(c.mask_polygons(star_lattice(0, c.w, 80, 186, 27, 6.0, inner=0.2)), SILVER_HI, 0.8)
     rear_marks(c)
+    keep = keep_clear(c, **REAR_KEEP)
+    star_field(c, 0, c.w, 30, 240, 27, STAR_R_C, keep=keep, inner=0.2, colour=SILVER_HI, opacity=0.45, margin=1.5)
     return c.out()
 
 
@@ -93,5 +93,5 @@ def build():
     painted["hood"] = paint_hood()
     painted["front"] = paint_front()
     painted["rear"] = paint_rear()
-    painted["deck"] = paint_deck(NUMBER, stars=(27, 5.0, SILVER_HI, 0.8))
-    return compose(painted)
+    painted["deck"] = paint_deck(27, STAR_R_C, colour=SILVER_HI, opacity=0.45, inner=0.2)
+    return compose(painted, finish=FINISH)

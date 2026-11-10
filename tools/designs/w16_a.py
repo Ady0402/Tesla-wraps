@@ -4,7 +4,8 @@ owner's current wrap.
 Silver nose and front doors, a blocky number plate and PETRONAS on the front
 door, one straight teal band along the bottom of the door, broad teal bands on
 the hood's edges with a big race number between them, and a three-pointed-star
-field that takes over as the body fades to black toward the tail.
+field that takes over as the body fades to black toward the tail.  The paint
+carries baked studio reflections (designs.w16_common.FINISH).
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from designs.w16_common import *
 NAME = "W16_Silver_Arrow"
 TITLE = "A - Silver Arrow"
 NUMBER = "63"
+STAR_R_A = 10.0            # one star size everywhere on this design
 
 
 def paint_sides() -> dict:
@@ -30,25 +32,22 @@ def paint_sides() -> dict:
     edge = 536 + (Y - 190) * 0.22
     c.paint(smoothstep(-6, 120, X - edge), black)
 
-    # star field over the rear half, thinning slightly toward the tail
-    def radius(x, y):
-        if x < 546:
-            return 0.0
-        grow = float(smoothstep(526, 568, x - (y - 190) * 0.22))
-        fade = 1.0 - 0.45 * float(smoothstep(770, 925, x))
-        r = 13.0 * grow * fade
-        return r if r >= 5 else 0.0
-    c.paint(c.mask_polygons(star_lattice(514, 990, 46, 290, 36, radius, inner=0.15)), WHITE)
+    # star field over the rear half: every star the same size, the field fades in
+    # with the black and dims a little toward the tail
+    def fade(x, y):
+        return float(smoothstep(530, 590, x - (y - 190) * 0.22)) * (1.0 - 0.3 * float(smoothstep(770, 925, x)))
+    keep = keep_clear(c, rects=[(842, 220, 926, 241)])            # the teal flash on the bumper corner
+    star_field(c, 532, 990, 46, 290, 36, STAR_R_A, keep=keep, inner=0.15, colour=WHITE, opacity=fade)
 
     # one straight teal band along the bottom edge of the front door
-    c.paint(c.mask_polygon([(293, SILL_Y - 17), (528, SILL_Y - 17), (522, SILL_Y - 4), (293, SILL_Y - 4)]), TEAL)
-    c.polygon(A_PILLAR_FLASH, TEAL)
+    c.paint(c.mask_polygon([(302, SILL_Y - 17), (516, SILL_Y - 17), (512, SILL_Y - 4), (302, SILL_Y - 4)]), TEAL)
     # short teal flash low on the corner of the rear bumper
     c.paint(c.mask_rect(852, 228, 916, 233, radius=2.5), TEAL)
 
     s.decal(block_plate(NUMBER, 50), 398, 168)
     s.decal(wordmark("PETRONAS", 25, BLACK), 414, 224)
-    s.decal(text_decal("IWC", F_SERIF, 26, fill=BLACK, tracking=1.2), 226, 143)
+    # on the flat of the fender, ahead of and above the side indicator
+    s.decal(text_decal("IWC", F_SERIF, 26, fill=BLACK, tracking=1.2), 204, 138)
     return s.render()
 
 
@@ -72,8 +71,9 @@ def paint_front():
 
 def paint_rear():
     c = Canvas("rear", BLACK)
-    c.paint(c.mask_polygons(star_lattice(0, c.w, 80, 186, 36, 11.0, inner=0.15)), WHITE, 0.92)
     rear_marks(c)
+    keep = keep_clear(c, **REAR_KEEP)
+    star_field(c, 0, c.w, 30, 240, 36, STAR_R_A, keep=keep, inner=0.15, colour=WHITE, opacity=0.7, margin=1.5)
     return c.out()
 
 
@@ -85,5 +85,5 @@ def build():
     painted["hood"] = paint_hood()
     painted["front"] = paint_front()
     painted["rear"] = paint_rear()
-    painted["deck"] = paint_deck(NUMBER, stars=(36, 9.0, WHITE, 0.92))
-    return compose(painted)
+    painted["deck"] = paint_deck(36, STAR_R_A, colour=WHITE, opacity=0.7, inner=0.15)
+    return compose(painted, finish=FINISH)
