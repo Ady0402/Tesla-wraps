@@ -7,7 +7,7 @@
 | | 檔案 | 風格 |
 | --- | --- | --- |
 | **A** | [`W16_Silver_Arrow.png`](W16_Silver_Arrow.png) | 簡潔版：銀色車頭、引擎蓋兩側寬版青綠邊帶與大號 63、前門方塊字 63 號碼牌與 PETRONAS、沿車門底緣的青綠色直帶，後門起漸層轉黑並鋪滿三芒星 |
-| **B** | [`W16_Race_Livery.png`](W16_Race_Livery.png) | 賽道版：青綠色斜帶與一條直線流線、黑色側箱、進氣口斜槓、大型 PETRONAS、C 柱號碼圓牌與贊助商字樣 |
+| **B** | [`W16_Race_Livery.png`](W16_Race_Livery.png) | 賽道版（車身取 3D 渲染參考圖、車頭取號碼牌參考圖）：青綠色斜帶接一條直線流線、黑色側箱、進氣口斜槓、大型 PETRONAS、三芒星網格、C 柱號碼圓牌與贊助商字樣；引擎蓋兩側雙綠條＋63 號碼牌，前保桿銀到深色漸層配 PETRONAS Syntium |
 | **C** | [`W16_Russell_63.png`](W16_Russell_63.png) | 號碼板版：前門白色面板＋大型方塊字 63、PETRONAS 與青綠底線，引擎蓋邊緣寬版青綠條紋，半色調三芒星由銀漸變到黑 |
 | **D** | [`W16_Black_Arrow.png`](W16_Black_Arrow.png) | 暗黑版：碳黑車身、銀色車鼻化為星陣、沿車門折線的青綠雙線與大型 63 |
 

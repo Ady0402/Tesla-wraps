@@ -104,6 +104,28 @@ def bumper_base(c: Canvas):
         [(0, NOSE), (22, "#A7ACB1"), (72, BUMPER_MID), (c.h, BUMPER_LOW)], axis="y"))
 
 
+def race_hood(c: Canvas, number: str):
+    """Hood of the preferred front: a broad teal stripe with a pinstripe inside
+    it along each hood edge, a black number plate up near the windscreen and a
+    small teal wordmark ahead of it.  Everything stays clear of the Tesla
+    badge at the nose."""
+    hood_base(c)
+    c.paint(hood_edge_bands(c, 8, lambda y: float(np.interp(y, [8, 80, 238], [15, 15, 5])), y1=240), TEAL)
+    c.paint(hood_edge_bands(c, lambda y: float(np.interp(y, [8, 80, 232], [30, 30, 14])), 3.2, y1=232), TEAL)
+    cx = c.w / 2
+    c.stamp(block_plate(number, 44), cx, 88)
+    c.stamp(wordmark("PETRONAS", 12, TEAL_DEEP, font=F_WORD, tracking=1.4), cx, 136)
+
+
+def race_bumper(c: Canvas):
+    """Front bumper of the preferred front: silver under the hood lip falling
+    away to near-black, with the lubricant wordmark in white on the dark part."""
+    bumper_base(c)
+    cx = c.w / 2
+    c.stamp(wordmark("PETRONAS", 13, WHITE, font=F_WORD, tracking=1.6), cx, 54)
+    c.stamp(text_decal("Syntium", "Montserrat-BoldItalic.otf", 19, fill=WHITE), cx, 75)
+
+
 def star_lattice(x0, x1, y0, y1, pitch, radius, rot=0.0, inner=0.17, stagger=True):
     """List of star polygons on a triangular lattice.  radius: number or
     callable (x, y) -> radius in px (<= 0 skips the star)."""

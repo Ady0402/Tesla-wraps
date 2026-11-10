@@ -74,23 +74,13 @@ def paint_mirrors() -> dict:
 
 def paint_hood():
     c = Canvas("hood", SILVER)
-    hood_base(c)
-    # broad teal stripe on each hood edge with a pinstripe inside it, both
-    # running parallel to the panel line
-    c.paint(hood_edge_bands(c, 7, lambda y: float(np.interp(y, [8, 70, 236], [15, 15, 4]))), TEAL)
-    c.paint(hood_edge_bands(c, lambda y: float(np.interp(y, [8, 70, 236], [29, 29, 13])), 3.0, y1=228), TEAL)
-    # number plate high on the hood, well clear of the Tesla badge at the nose
-    c.stamp(block_plate(NUMBER, 42), c.w / 2, 104)
-    c.stamp(wordmark("PETRONAS", 11, TEAL_DEEP, font=F_WORD, tracking=1.2), c.w / 2, 150)
+    race_hood(c, NUMBER)
     return c.result()
 
 
 def paint_front():
     c = Canvas("front", SILVER)
-    bumper_base(c)
-    cx = c.w / 2
-    c.stamp(wordmark("PETRONAS", 13, WHITE, font=F_WORD, tracking=1.6), cx, 52)
-    c.stamp(text_decal("Syntium", "Montserrat-BoldItalic.otf", 18, fill=WHITE), cx, 72)
+    race_bumper(c)
     return c.result()
 
 
