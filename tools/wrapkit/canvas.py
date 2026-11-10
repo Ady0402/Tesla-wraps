@@ -1,4 +1,4 @@
-"""Supersampled drawing surface for one view, in texture-pixel units."""
+"""Supersampled drawing surface for one canvas (see template.py), in canvas-pixel units."""
 from __future__ import annotations
 
 import math
@@ -106,13 +106,9 @@ class Canvas:
         ys = (np.arange(self.H, dtype=np.float32) + 0.5) / SS
         return np.meshgrid(xs, ys)
 
-    def panel_mask(self, visible: bool = False):
-        """Float mask (sub-pixel resolution) of the paintable islands."""
-        if visible:
-            from .compose import visible_masks
-            m = np.any(list(visible_masks(self.view).values()), axis=0)
-        else:
-            m = self.view.mask()
+    def panel_mask(self):
+        """Float mask (sub-pixel resolution) of the paintable body in this canvas."""
+        m = self.view.mask()
         return np.repeat(np.repeat(m, SS, 0), SS, 1).astype(np.float32)
 
     # ---- masks ------------------------------------------------------------
@@ -208,8 +204,12 @@ class Canvas:
 
     # ---- output -----------------------------------------------------------
     def result(self) -> np.ndarray:
-        """Box-filter down to texture resolution -> float32 (h, w, 3)."""
+        """Box-filter down to canvas resolution -> float32 (h, w, 3)."""
         return self.px.reshape(self.h, SS, self.w, SS, 3).mean(axis=(1, 3))
+
+    def out(self) -> np.ndarray:
+        """The supersampled image, as compose() wants it."""
+        return self.px
 
     def mirrored(self) -> "Canvas":
         """Left-right mirror image as a canvas for the opposite flank."""
@@ -222,7 +222,7 @@ class Canvas:
         src = self.px[:, ::-1]
         if (c.H, c.W) == src.shape[:2]:
             c.px = src.copy()
-        else:  # mirror caps / rails differ by a pixel or two between flanks
+        else:  # mirror caps / rail strips differ by a pixel or two between the two sides
             c.px = np.asarray(
                 Image.fromarray(np.clip(src, 0, 255).astype(np.uint8)).resize((c.W, c.H), Image.BILINEAR),
                 dtype=np.float32)

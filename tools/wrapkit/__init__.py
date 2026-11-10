@@ -1,15 +1,16 @@
-"""wrapkit - paint Tesla custom wraps for the legacy Model Y in upright views.
+"""wrapkit - paint Tesla custom wraps for the legacy Model Y on true views of the car.
 
     from wrapkit import Canvas, compose, save_wrap, save_sheet
 """
 from .canvas import (SS, Canvas, block_digits, box_decal, find_font, layer, mix, rgb, ribbon,
                      smoothstep, spline, star3, text_decal)
-from .compose import compose, decompose, visible_masks
+from .carmap import canvas_sizes, on_car, panel_box, panel_image, pixels_per_metre, silhouette
+from .compose import compose, decompose
 from .export import save_wrap, validate
-from .preview import save_sheet, sheet, side_elevation
+from .preview import save_sheet, sheet
 from .template import PANELS, SIZE, view, views
 
 __all__ = ["SS", "Canvas", "block_digits", "box_decal", "find_font", "layer", "mix", "rgb", "ribbon",
-           "smoothstep", "spline", "star3", "text_decal", "compose", "decompose",
-           "visible_masks", "save_wrap", "validate", "save_sheet", "sheet",
-           "side_elevation", "PANELS", "SIZE", "view", "views"]
+           "smoothstep", "spline", "star3", "text_decal", "canvas_sizes", "on_car", "panel_box",
+           "panel_image", "pixels_per_metre", "silhouette", "compose", "decompose", "save_wrap",
+           "validate", "save_sheet", "sheet", "PANELS", "SIZE", "view", "views"]
