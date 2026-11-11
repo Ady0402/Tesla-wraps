@@ -27,7 +27,7 @@ def compose(painted: dict, finish=None, sharpen: float = SHARPEN) -> np.ndarray:
     """painted: {canvas: array (h * r, w * r, 3)} -> uint8 RGBA texture.
 
     finish: optional callable (rgb float texture) -> rgb, applied to the texels
-    the car shows before the hidden margin is filled (e.g. finish.metallic()).
+    the car shows before the hidden margin is filled (e.g. finish.tonal()).
     If it also has ``opacity(rgb)``, the wrap's alpha becomes the template
     alpha times that opacity (computed from the unshaded design colours).
 

@@ -159,6 +159,75 @@ class Metallic:
         return np.clip(out, 0, 255)
 
 
+@dataclass(frozen=True)
+class Tonal:
+    """Metal look from colour alone: a soft, low-contrast change of tone over
+    the body instead of crisp reflections.  The surface normals are smoothed
+    over ``blur`` texels inside each panel, so creases and body lines leave no
+    light or dark line; what remains is the broad shape of the body - surfaces
+    that face the sky a little lighter, surfaces that turn down toward the
+    ground a little deeper - which reads as brushed silver.
+
+    strength   0 = flat paint, 1 = full effect
+    eye_deg    height of the assumed viewer above the panel, in degrees
+    lo, hi     paint brightness where the ground / the sky is mirrored
+    soft       half-width (deg) of the smooth change from ground to sky
+    blur       smoothing of the normals, in texels
+    """
+    strength: float = 1.0
+    eye_deg: float = 18.0
+    lo: float = 0.84
+    hi: float = 1.07
+    soft: float = 38.0
+    blur: float = 14.0
+
+    def shading(self):
+        if getattr(self, "_shading", None) is not None:
+            return self._shading
+        from scipy import ndimage as ndi
+        n = normals()
+        lab = panel_labels()
+        on = on_car()
+        ns = np.zeros_like(n)
+        for pid in np.unique(lab[on]):
+            m = (lab == pid) & on
+            w = ndi.gaussian_filter(m.astype(np.float32), self.blur)
+            for k in range(3):
+                ns[..., k] = np.where(m, ndi.gaussian_filter(n[..., k] * m, self.blur) / np.maximum(w, 1e-4), ns[..., k])
+        ns /= np.maximum(np.linalg.norm(ns, axis=-1, keepdims=True), 1e-6)
+        ns[~on] = n[~on]
+        bias = np.zeros(lab.shape + (3,), np.float32)
+        for name in _FRONT:
+            bias[lab == PANELS[name], 2] = 0.35
+        for name in _REAR:
+            bias[lab == PANELS[name], 2] = -0.35
+        h = ns * np.array([1, 0, 1], np.float32) + bias
+        h /= np.maximum(np.linalg.norm(h, axis=-1, keepdims=True), 1e-6)
+        a = np.radians(self.eye_deg)
+        eye = h * np.cos(a) + np.array([0, 1, 0], np.float32) * np.sin(a)
+        ndote = (ns * eye).sum(-1, keepdims=True)
+        r = 2 * ndote * ns - eye
+        elev = np.degrees(np.arcsin(np.clip(r[..., 1], -1, 1)))
+        t = np.clip((elev + self.soft) / (2 * self.soft), 0, 1)
+        t = t * t * (3 - 2 * t)
+        shade = 1.0 + self.strength * (self.lo + (self.hi - self.lo) * t - 1.0)
+        object.__setattr__(self, "_shading", (shade.astype(np.float32), np.zeros_like(shade, dtype=np.float32)))
+        return self._shading
+
+    def __call__(self, rgb: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
+        if self.strength <= 0:
+            return rgb
+        on = on_car() if mask is None else (mask & on_car())
+        shade, _ = self.shading()
+        out = rgb.copy()
+        out[on] = rgb[on] * shade[on][:, None]
+        return np.clip(out, 0, 255)
+
+
+def tonal(strength: float = 1.0, **kw) -> Tonal:
+    return Tonal(strength=strength, **kw)
+
+
 def creases() -> np.ndarray:
     """0..1 per texel: how sharply the body bends there (the body lines)."""
     from functools import lru_cache  # noqa: F401  (cached below)

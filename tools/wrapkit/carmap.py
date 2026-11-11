@@ -66,24 +66,52 @@ def _basis(px, py, reg, degree):
     return np.stack([u ** i * v ** j for i in range(degree + 1) for j in range(degree + 1 - i)], -1)
 
 
+RES_SCALE = 256.0
+
+
+@lru_cache(maxsize=1)
+def _residual():
+    """(rx, ry): what each region's polynomial misses at every texel centre, in
+    canvas px (measured on the model, see calibrate.py); zeros if absent."""
+    out = []
+    for name in ("x", "y"):
+        f = DATA / f"modely_residual_{name}.png"
+        if f.exists():
+            out.append((np.asarray(Image.open(f), dtype=np.float64) - 32768.0) / RES_SCALE)
+        else:
+            out.append(np.zeros((SIZE, SIZE)))
+    return tuple(out)
+
+
 @lru_cache(maxsize=4)
 def texel_coords(sub: int = 2) -> dict:
     """{canvas: (ys, xs, X, Y)} - for every texel that belongs to a projection
-    canvas, its canvas coordinates at sub x sub sample points (X, Y: (n, sub*sub))."""
+    canvas, its canvas coordinates at sub x sub sample points (X, Y: (n, sub*sub)):
+    the region's polynomial plus the measured remainder, interpolated between
+    texel centres (inside the region only)."""
     cal, vm = _cal()
     lab = panel_labels()
+    rx, ry = _residual()
     offs = (np.arange(sub) + 0.5) / sub
     out = {}
     for reg in cal["regions"]:
         m = (lab == PANELS[reg["panel"]]) & (vm == reg["id"])
         ys, xs = np.nonzero(m)
         cx_, cy_ = np.asarray(reg["x"]), np.asarray(reg["y"])
+        # remainder of this region, carried a few texels past its edge so the
+        # interpolation never mixes in a neighbouring region's values
+        y0, y1, x0, x1 = max(ys.min() - 2, 0), min(ys.max() + 3, SIZE), max(xs.min() - 2, 0), min(xs.max() + 3, SIZE)
+        mm = m[y0:y1, x0:x1]
+        _, (iy, ix) = ndi.distance_transform_edt(~mm, return_indices=True)
+        fx, fy = rx[y0:y1, x0:x1][iy, ix], ry[y0:y1, x0:x1][iy, ix]
         X = np.empty((len(ys), sub * sub)); Y = np.empty_like(X)
         k = 0
         for oy in offs:
             for ox in offs:
                 A = _basis(xs + ox, ys + oy, reg, cal["degree"])
-                X[:, k], Y[:, k] = A @ cx_, A @ cy_
+                at = [ys + oy - 0.5 - y0, xs + ox - 0.5 - x0]
+                X[:, k] = A @ cx_ + ndi.map_coordinates(fx, at, order=1, mode="nearest")
+                Y[:, k] = A @ cy_ + ndi.map_coordinates(fy, at, order=1, mode="nearest")
                 k += 1
         prev = out.get(reg["view"])
         out[reg["view"]] = (ys, xs, X, Y) if prev is None else tuple(
@@ -178,6 +206,29 @@ def normal_image(view: str) -> np.ndarray:
 
 
 @lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
+def facing_min(view: str) -> np.ndarray:
+    """(h, w) float: for every pixel of a projection canvas, how squarely the
+    least favourable piece of body under it faces the viewer (the normal's
+    component toward the viewer, minimum over every texel that lands there).
+    Where the body folds under itself - the lip under the rear spoiler seen
+    from behind - several surfaces share a pixel; normal_image() shows one of
+    them, this shows the worst, so a graphic can stay off the fold."""
+    w, h = canvas_sizes()[view]
+    ys, xs, X, Y = texel_coords(2)[view]
+    ax = np.asarray(_AXES[view], dtype=np.float32)
+    c = (normals()[ys, xs] @ ax.T)[:, 2]
+    img = np.full((h, w), np.inf, dtype=np.float32)
+    for k in range(X.shape[1]):
+        ix, iy = np.floor(X[:, k]).astype(int), np.floor(Y[:, k]).astype(int)
+        ok = (ix >= 0) & (ix < w) & (iy >= 0) & (iy < h)
+        np.minimum.at(img, (iy[ok], ix[ok]), c[ok])
+    hit = np.isfinite(img)
+    _, idx = ndi.distance_transform_edt(~hit, return_indices=True)
+    img = img[idx[0], idx[1]]
+    return ndi.minimum_filter(img, size=3)          # one pixel of margin around a fold
+
+
 def height() -> np.ndarray:
     """(1024, 1024) float32 height above the ground in metres of every texel the
     car shows (0 elsewhere).  Handy for graphics that must stay level on the

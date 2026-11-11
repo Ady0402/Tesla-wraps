@@ -5,7 +5,7 @@ Silver nose and front doors, a blocky number plate and PETRONAS on the front
 door, one straight teal band along the bottom of the door, broad teal bands on
 the hood's edges with a big race number between them, and a three-pointed-star
 field that takes over as the body fades to black toward the tail.  The paint
-carries baked studio reflections (designs.w16_common.FINISH).
+is layered silver with a soft tonal finish (designs.w16_common.FINISH).
 """
 from __future__ import annotations
 
@@ -31,12 +31,9 @@ def paint_sides() -> dict:
     # leaning forward at the top like the engine-cover line of the F1 car
     c.paint(seam_fade(c, 126.0), black)          # starts on the front/rear door gap
 
-    # star field over the rear half: every star the same size, the field fades in
-    # with the black and dims a little toward the tail
-    def fade(x, y):
-        return min(1.0, seam_darkness(x, y, 126.0) * 1.4) * (1.0 - 0.3 * float(smoothstep(770, 925, x)))
+    # star field over the dark rear half: every star the same size, angle and brightness
     keep = keep_clear(c, rects=[(842, 220, 926, 241)])            # the teal flash on the bumper corner
-    star_field(c, 532, 990, 46, 290, 36, STAR_R_A, keep=keep, inner=0.15, colour=WHITE, opacity=fade)
+    star_field(c, 532, 990, 46, 290, 36, STAR_R_A, keep=keep, inner=0.15, colour=WHITE, where=in_dark(126.0))
 
     # one straight teal band along the bottom edge of the front door
     c.paint(c.mask_polygon([(302, SILL_Y - 17), (516, SILL_Y - 17), (512, SILL_Y - 4), (302, SILL_Y - 4)]), TEAL)
@@ -72,7 +69,7 @@ def paint_rear():
     c = Canvas("rear", BLACK)
     rear_marks(c)
     keep = keep_clear(c, **REAR_KEEP)
-    star_field(c, 0, c.w, 30, 240, 36, STAR_R_A, keep=keep, inner=0.15, colour=WHITE, opacity=0.7, margin=1.5)
+    star_field(c, 0, c.w, 30, 240, 36, STAR_R_A, keep=keep, inner=0.15, colour=WHITE, margin=1.5)
     return c.out()
 
 
@@ -84,5 +81,5 @@ def build():
     painted["hood"] = paint_hood()
     painted["front"] = paint_front()
     painted["rear"] = paint_rear()
-    painted["deck"] = paint_deck(36, STAR_R_A, colour=WHITE, opacity=0.7, inner=0.15)
+    painted["deck"] = paint_deck(36, STAR_R_A, colour=WHITE, inner=0.15)
     return compose(painted, finish=FINISH)

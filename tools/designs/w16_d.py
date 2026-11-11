@@ -13,6 +13,7 @@ NAME = "W16_Black_Arrow"
 TITLE = "D - Black Arrow"
 NUMBER = "63"
 STAR_R_D = 10.0            # one star size everywhere on this design
+STAR_ALPHA_D = 0.6         # ... and one brightness
 
 
 def paint_sides() -> dict:
@@ -27,13 +28,11 @@ def paint_sides() -> dict:
     silver_side(silver)
     c.paint(1 - smoothstep(-70, 60, X - edge), silver.px)
 
-    # star field, every star the same size: bright where the silver ends, dimming toward the tail
-    def fade(x, y):
-        d = x - (178 + (y - 160) * 0.55)
-        return float(np.interp(d, [-30, 20, 80, 600], [0.0, 1.0, 1.0, 0.3]))
+    # star field from where the silver has dissolved: every star the same size, angle and brightness
     keep = keep_clear(c, rects=[(340, 138, 488, 222), (560, 184, 680, 208)])   # the number and PETRONAS
     keep &= np.arange(c.h)[:, None] < crease_y(np.arange(c.w))[None, :] - 14   # nothing on or below the teal lines
-    star_field(c, 110, 990, 44, 290, 29, STAR_R_D, keep=keep, inner=0.15, colour=STAR, opacity=fade)
+    star_field(c, 110, 990, 44, 290, 29, STAR_R_D, keep=keep, inner=0.15, colour=STAR, opacity=STAR_ALPHA_D,
+               where=lambda x, y: x - (178 + (y - 160) * 0.55) >= 20)
 
     # teal follows the lower door crease from wheel arch to wheel arch:
     # a band on the crease and a pinstripe just above it
@@ -64,8 +63,7 @@ def paint_hood():
     hood_base(silver)
     # black at the windscreen (it meets the black A-pillars), silver from mid-hood to the nose
     c.paint(smoothstep(46, 122, Y), silver.px)
-    star_field(c, 0, c.w, 10, 150, 29, STAR_R_D, inner=0.15, colour=STAR,
-               opacity=lambda x, y: float(np.interp(y, [20, 60, 110, 140], [0.5, 1.0, 1.0, 0.0])))
+    star_field(c, 0, c.w, 10, 84, 29, STAR_R_D, inner=0.15, colour=STAR, opacity=STAR_ALPHA_D)   # on the black part only
     c.paint(hood_edge_bands(c, -4, lambda y: float(np.interp(y, [14, 70, 240], [11, 11, 6]))), TEAL)
     # number kept clear of the Tesla badge that sits near the nose
     c.stamp(block_digits(NUMBER, 30, BLACK, weight=0.23, shear=0.1), c.w / 2 + 1, 164)
@@ -84,7 +82,7 @@ def paint_rear():
     c = Canvas("rear", BLACK)
     rear_marks(c)
     keep = keep_clear(c, **REAR_KEEP)
-    star_field(c, 0, c.w, 30, 240, 29, STAR_R_D, keep=keep, inner=0.15, colour=STAR, opacity=0.3, margin=1.5)
+    star_field(c, 0, c.w, 30, 240, 29, STAR_R_D, keep=keep, inner=0.15, colour=STAR, opacity=STAR_ALPHA_D, margin=1.5)
     return c.out()
 
 
@@ -96,5 +94,5 @@ def build():
     painted["hood"] = paint_hood()
     painted["front"] = paint_front()
     painted["rear"] = paint_rear()
-    painted["deck"] = paint_deck(29, STAR_R_D, colour=STAR, opacity=0.3, inner=0.15)
+    painted["deck"] = paint_deck(29, STAR_R_D, colour=STAR, opacity=STAR_ALPHA_D, inner=0.15)
     return compose(painted, finish=FINISH)

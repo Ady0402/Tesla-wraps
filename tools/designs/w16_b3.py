@@ -31,15 +31,14 @@ def paint_sides() -> dict:
     r = door_edge("rear_door_L", "rear")
     c.paint(smoothstep(-1.0, 1.0, X - r(Y) + 3), black)
 
-    def fade(x, y):
-        return float(np.interp(x, [420, 560, 700, 920], [0.0, 0.9, 1.0, 0.65]))
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
     sy = shoulder_y(xs)[None, :]
     keep = keep_clear(c, rects=[(330, 196, 512, 236)] + QUARTER_KEEP["rects"],
                       circles=QUARTER_KEEP["circles"])
     pod_mask = (ys > sy + 8) | (xs[None, :] > 745)
     keep &= pod_mask
-    star_field(c, 300, 990, 40, 290, 25, STAR_R, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2, opacity=fade)
+    star_field(c, 300, 990, 40, 290, 25, STAR_R, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2,
+               where=lambda x, y: x >= 498)
 
     # one teal line on the shoulder crease, from the pod's front edge to the end of the rear door
     xa0 = float(f(shoulder_y(300))) + 12

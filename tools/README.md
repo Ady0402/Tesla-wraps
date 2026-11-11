@@ -29,7 +29,7 @@ same pixels everywhere; the exact bytes depend on the library versions.
 | `wrapkit/carmap.py` | where every texel of the texture sits on the car (reads `wrapkit/data/`) |
 | `wrapkit/canvas.py` | 4x supersampled drawing surface, text and blocky race-number decals, splines, three-pointed stars |
 | `wrapkit/compose.py` | canvases -> texture (`compose`, optionally with a `finish`) and texture -> canvases (`decompose`) |
-| `wrapkit/finish.py` | `metallic()`: studio reflections and light on the body lines, baked into the paint |
+| `wrapkit/finish.py` | `tonal()`: a soft change of tone with the broad shape of the body (used); `metallic()`: studio reflections and light on the body lines (kept, not used) |
 | `wrapkit/export.py` | saves a PNG that satisfies Tesla's rules (`save_wrap`) and checks one (`validate`: container, bit depth, size, name, alpha against the template) |
 | `wrapkit/preview.py` | flat sheet of every side, built from the saved file |
 | `render_visualizer.js` | uploads wraps to the Tesla Wrap Gallery visualizer and screenshots the 3D car |
@@ -66,14 +66,22 @@ at about (200, 90).
 ## Stars
 
 `designs.w16_common.star_field` lays three-pointed stars out on a lattice in a
-canvas and draws them so that, **on the car**, every star has the same size and
-one arm pointing straight up: where the surface is tilted away from the view
-the star is pre-squashed by the same amount the projection foreshortens it.
-Only whole stars are drawn - a star that would cross a panel gap, an edge, a
-strongly curved area or a keep-clear zone (`keep_clear`) is left out rather
-than cut. Fades are done with brightness, never with size.
+canvas and draws them so that, **on the car**, every star has the same size,
+angle and brightness: `on_body()` builds each star in the surface's own frame
+('up' = the canvas' up laid onto the surface), maps it back into the canvas
+through the local foreshortening and refines every point with the normal under
+it, so a star on a slanted or gently curved panel keeps its proportions. Only
+whole stars are drawn - a star that would cross a panel gap, an edge, a bend,
+a fold (`carmap.facing_min`: the lip under the spoiler, where the body turns
+under itself and two surfaces share a canvas pixel) or a keep-clear zone
+(`keep_clear`) is left out rather than cut. Stars are never faded: `where=`
+says where the field is, and a star is there in full or not at all.
 
-## Metallic finish
+Measured on the 3D model (every star of every design, mapped through the
+model's own UVs): size within about 1 %, every arm within 2 degrees of where it
+should point.
+
+## Finish
 
 The car and the app blend a wrap over the car's own paint by the wrap's alpha
 (`colour = mix(paint, wrap, a)`, roughness from ~0.1 to 0.9 and metallic from
@@ -82,14 +90,16 @@ Making the silver translucent does let the car's glossy paint through - but it
 also lets the car's paint *colour* through (a grey car turned the silver grey),
 so the wraps stay fully opaque and the metallic look is painted in instead.
 
-`wrapkit.finish.Metallic` shades every texel from its surface normal
-(`wrapkit/data/modely_normals.png`) with what a simple photo studio would mirror
-for a viewer beside the car - floor, a dark band under the horizon, a bright
-horizon line, sky and an overhead light box - and adds light where the body
-bends sharply (`crease_gain`), so light and dark edges land on the body lines:
-the shoulder, the door crease, the wheel arches and the hood edges. The
-designs use `FINISH` in `designs/w16_common.py`; `floor` / `shade_lo` set how
-dark the lower panels get. (`silver_alpha`, `shade_alpha` and `compose(...,
+The designs get the metal look from colour: layered silver gradients
+(`SIDE_TONES` / `silver_gradient`, `hood_base`, `bumper_gradient` in
+`designs/w16_common.py`) plus `wrapkit.finish.Tonal` - a soft, low-contrast
+change of tone with the broad shape of the body (normals smoothed over 14
+texels inside each panel, a wide sky-to-ground transition), so creases and body
+lines leave no light or dark line. `FINISH` in `designs/w16_common.py` sets it.
+
+`wrapkit.finish.Metallic` - studio reflections with a bright horizon line and
+light on the body lines - is kept for reference; on the car's own lighting it
+made the nose look streaky. (`silver_alpha`, `shade_alpha` and `compose(...,
 finish)` still support a translucent finish for cars painted silver.)
 
 ## Resolution
@@ -112,8 +122,12 @@ for "Model Y (Pre-2025)"; the model itself is not in this repository):
   (a 5-8 px rim round every island, the lower grille, the door-handle recesses,
   half of each roof-rail strip); `compose` fills it with the neighbouring colour.
 * `modely_projection.json` - per panel, a polynomial from texel coordinates to
-  canvas coordinates. Fit error is below 0.5 px on the body sides and the hood
-  and about 1 px on the bumpers and liftgate.
+  canvas coordinates, and `modely_residual_x.png` / `modely_residual_y.png` -
+  what the polynomial misses at every texel (canvas px x 256 around 32768,
+  16-bit). A polynomial cannot follow a fold such as the liftgate lip (it was
+  up to 9 px off there, enough to stretch a star by a fifth), so `texel_coords`
+  adds the stored remainder, interpolated inside each region: the mapping is
+  then exact to about 0.01 px everywhere.
 * `modely_normals.png` - the smooth surface normal of every texel the car
   shows, 8 bits per component (smoothed within each panel when read).
 * `modely_height.png` - height above the ground of every texel in millimetres

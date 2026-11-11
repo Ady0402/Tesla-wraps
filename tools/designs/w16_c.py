@@ -14,6 +14,7 @@ NAME = "W16_Russell_63"
 TITLE = "C - Russell 63"
 NUMBER = "63"
 STAR_R_C = 9.5             # one star size everywhere on this design
+STAR_ALPHA_C = 0.85        # ... and one brightness
 INITIALS = "GR"
 
 PANEL = (301, 133, 523, 256)     # white number panel on the front door (x0, y0, x1, y1)
@@ -29,11 +30,9 @@ def paint_sides() -> dict:
     t = seam_fade(c, 146.0)                       # starts on the front/rear door gap
     c.paint(t, c.gradient_field([(60, CARBON), (c.h, BLACK)], axis="y"))
 
-    # stars all the same size: bright where the silver gives way to black,
-    # dimming toward the tail
-    def fade(x, y):
-        return float(np.interp(seam_darkness(x, y, 146.0), [0.0, 0.15, 0.7, 1.0], [0.0, 1.0, 0.85, 0.6]))
-    star_field(c, 540, 990, 44, 290, 27, STAR_R_C, inner=0.2, colour=SILVER_HI, margin=1.5, opacity=fade)
+    # stars where the silver has given way to black: all one size, angle and brightness
+    star_field(c, 540, 990, 44, 290, 27, STAR_R_C, inner=0.2, colour=SILVER_HI, margin=1.5, opacity=STAR_ALPHA_C,
+               where=in_dark(146.0))
 
     # number panel
     x0, y0, x1, y1 = PANEL
@@ -56,12 +55,9 @@ def paint_sides() -> dict:
 
 
 def paint_rails() -> dict:
-    r = black_rails()
-    c = r.art
-    # a single row of stars along the roof line, as on the reference
-    xs = np.arange(170, c.w - 14, 24)
-    c.paint(c.mask_polygons([star3(x, float(rail_mid(x)), 6.0, 0.0, 0.2) for x in xs]), WHITE)
-    return r.render()
+    # plain black with the teal A-pillar line: the rails are too narrow for a
+    # full-size star, and smaller ones would break the one-size rule
+    return black_rails().render()
 
 
 def paint_hood():
@@ -80,7 +76,7 @@ def paint_rear():
     c = Canvas("rear", BLACK)
     rear_marks(c)
     keep = keep_clear(c, **REAR_KEEP)
-    star_field(c, 0, c.w, 30, 240, 27, STAR_R_C, keep=keep, inner=0.2, colour=SILVER_HI, opacity=0.45, margin=1.5)
+    star_field(c, 0, c.w, 30, 240, 27, STAR_R_C, keep=keep, inner=0.2, colour=SILVER_HI, opacity=STAR_ALPHA_C, margin=1.5)
     return c.out()
 
 
@@ -92,5 +88,5 @@ def build():
     painted["hood"] = paint_hood()
     painted["front"] = paint_front()
     painted["rear"] = paint_rear()
-    painted["deck"] = paint_deck(27, STAR_R_C, colour=SILVER_HI, opacity=0.45, inner=0.2)
+    painted["deck"] = paint_deck(27, STAR_R_C, colour=SILVER_HI, opacity=STAR_ALPHA_C, inner=0.2)
     return compose(painted, finish=FINISH)

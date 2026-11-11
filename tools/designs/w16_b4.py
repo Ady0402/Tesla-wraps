@@ -32,14 +32,12 @@ def paint_sides() -> dict:
     # thin teal line on the lower crease of the black side
     c.paint(crease_band(c, float(gap(232)) + 24, 700, 3.0, offset=-1.5), TEAL)
 
-    def fade(x, y):
-        return float(np.interp(x, [560, 600, 760, 920], [0.6, 1.0, 1.0, 0.7]))
     keep = keep_clear(c, rects=[(554, 164, 704, 192)] + QUARTER_KEEP["rects"],
                       circles=QUARTER_KEEP["circles"])
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
     keep &= xs[None, :] > gap(ys) + 22
     keep &= ys < crease_y(xs)[None, :] - 8
-    star_field(c, 560, 990, 48, 290, 25, STAR_R, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2, opacity=fade)
+    star_field(c, 560, 990, 48, 290, 25, STAR_R, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2)
 
     s.decal(block_digits(NUMBER, 62, BLACK, weight=0.24, shear=0.1), 400, 176)
     s.decal(wordmark("PETRONAS", 22, BLACK, tracking=0.8), 404, 236)

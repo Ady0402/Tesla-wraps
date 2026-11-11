@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
-from wrapkit import (Canvas, block_digits, box_decal, layer, metallic, mix, normal_image, panel_image, rgb,
+from wrapkit import (Canvas, block_digits, box_decal, facing_min, layer, mix, normal_image, panel_image, rgb, tonal,
                      smoothstep, star3, text_decal)
 
 # ---- palette --------------------------------------------------------------
@@ -27,12 +27,14 @@ NOSE = "#B2B7BC"        # silver as it reaches the nose (hood front edge / top o
 BUMPER_MID = "#42464B"
 BUMPER_LOW = "#131518"
 
-# the car renders a wrap as matte vinyl, so the metallic look is painted in
-# (wrapkit/finish.py): studio reflections that follow the surface plus light
-# along the body lines.  The wrap stays fully opaque - a translucent wrap
-# would let the car's own paint colour show through.
-FINISH = metallic(1.0, crease_gain=75.0, line_gain=85.0, floor=0.52, horizon=0.18, sky=0.80,
-                  shade_lo=0.50, shade_hi=1.20)
+# the car renders a wrap as matte vinyl, so the metallic look is painted in -
+# from colour, not from reflections (owner's call: light along the body lines
+# looked odd on the nose): layered light-to-dark gradients in the silver
+# itself (silver_gradient, hood_base, bumper_gradient) plus a soft change of
+# tone with the broad shape of the body (wrapkit/finish.py, Tonal), with no
+# lines on creases.  The wrap stays fully opaque - a translucent wrap would
+# let the car's own paint colour show through.
+FINISH = tonal(1.0)
 
 # ---- fonts ----------------------------------------------------------------
 F_WORD = "Montserrat-ExtraBold.otf"       # PETRONAS-style wide bold caps
@@ -92,6 +94,14 @@ def seam_fade(c: Canvas, length: float, start: float = 3.0):
     return smoothstep(0.0, length, X - gap(Y) - start)
 
 
+STAR_DARK = 0.4      # stars start where the fade to black is this far along (they need dark paint to show)
+
+
+def in_dark(length: float, start: float = 3.0):
+    """where= rule for star_field: the part of a seam fade that has turned dark."""
+    return lambda x, y: seam_darkness(x, y, length, start) >= STAR_DARK
+
+
 def seam_darkness(x, y, length: float, start: float = 3.0) -> float:
     """seam_fade at one point (for star fields)."""
     gap = door_edge("rear_door_L", "front")
@@ -137,9 +147,15 @@ def rail_x(side_x):
 
 
 # ---- base paint -------------------------------------------------------------
-def metallic(c: Canvas, top=SILVER_HI, mid=SILVER, bottom=SILVER_LO):
-    """Soft top-to-bottom sheen so flat silver does not look like grey primer."""
-    return c.gradient_field([(c.h * 0.3, top), (c.h * 0.65, mid), (c.h, bottom)], axis="y")
+# layered silver on the side canvases, by height (canvas Y): bright along the
+# top of the body, a little deeper over the door faces, darkest at the sills
+SIDE_TONES = [(96, "#E3E6E9"), (150, "#D1D5D9"), (180, "#C2C7CC"), (218, "#AFB5BB"), (252, "#9DA3AA"), (288, "#8E949B")]
+
+
+def silver_gradient(c: Canvas):
+    """Light-to-dark layers of silver down the body side - the metal look comes
+    from these tones rather than from painted reflections."""
+    return c.gradient_field(SIDE_TONES, axis="y")
 
 
 def bumper_gradient(c: Canvas, y0=0.0):
@@ -154,15 +170,18 @@ def silver_side(c: Canvas):
     """Silver body side: sheen, a slightly deeper tone toward the nose, and the
     side of the front bumper in the same gradient as its front."""
     X, Y = c.grid()
-    c.paint(np.ones_like(X), metallic(c))
+    c.paint(np.ones_like(X), silver_gradient(c))
     c.paint((1 - smoothstep(40, 290, X)) * 0.9, NOSE)
     c.paint((1 - smoothstep(134, 144, X)) * smoothstep(166, 176, Y), bumper_gradient(c, BUMPER_SIDE_Y0))
 
 
 def hood_base(c: Canvas):
-    """Silver hood, bright at the windscreen and deeper toward the nose."""
-    X, _ = c.grid()
-    c.paint(np.ones_like(X), c.gradient_field([(8, SILVER_HI), (c.h * 0.5, SILVER), (c.h - 10, NOSE)], axis="y"))
+    """Silver hood in layers: bright at the windscreen and along the crown,
+    deeper toward the nose and toward the side edges."""
+    X, Y = c.grid()
+    c.paint(np.ones_like(X), c.gradient_field([(8, "#E2E5E8"), (c.h * 0.5, SILVER), (c.h - 10, NOSE)], axis="y"))
+    side = np.clip(np.abs(X - c.w / 2) / (c.w / 2), 0, 1)
+    c.paint(0.55 * smoothstep(0.35, 1.0, side), "#A3A9AF")
 
 
 def hood_edge_bands(c: Canvas, inset, width, y0=2, y1=254):
@@ -264,70 +283,122 @@ def _edge_distance(view: str) -> np.ndarray:
 _EDGE = {}
 
 
-def on_surface(view: str, pts, cx, cy):
-    """Squash a shape drawn around (cx, cy) so that it keeps its proportions
-    on the car: in a projection a tilted surface is foreshortened along the
-    direction it tilts, so the drawing is shortened by the same factor.
-    Returns (points, factor) - factor is the cosine of the tilt."""
+def _frame(n):
+    """Tangent frame of a surface with normal n = (along canvas X, along canvas
+    Y, toward the viewer): (right, up) unit vectors in the same coordinates,
+    'up' being the canvas' up direction (world up on the side, front and rear
+    views) laid onto the surface."""
+    n = np.asarray(n, dtype=np.float64)
+    n = n / np.linalg.norm(n)
+    up = np.array([0.0, -1.0, 0.0]) - (-n[1]) * n
+    up /= np.linalg.norm(up)
+    right = np.cross(up, n)
+    if right[0] < 0:
+        right = -right
+    return right, up
+
+
+def _lift(d, n):
+    """Canvas offset d (px) -> offset on the surface with normal n (px, 3D)."""
+    return np.array([d[0], d[1], -(n[0] * d[0] + n[1] * d[1]) / n[2]])
+
+
+def on_body(view: str, shape, cx, cy, iterations=3):
+    """Lay a flat shape onto the car: ``shape`` is a list of (x, y) offsets as
+    the shape should measure on the body (px at the canvas scale, y down,
+    so (0, -r) points straight up), centred on canvas point (cx, cy).  Returns
+    the canvas points that draw it at that size and angle on the surface: the
+    projection's foreshortening and the direction of 'up' on a slanted panel
+    are both undone, and each point is refined with the normal under it so a
+    shape that sits on a gentle curve keeps its size too."""
     ni = normal_image(view)
     h, w = ni.shape[:2]
-    ix, iy = int(np.clip(cx, 0, w - 1)), int(np.clip(cy, 0, h - 1))
-    nx, ny, nv = ni[iy, ix]
-    f = float(abs(nv))
-    d = np.array([nx, ny], dtype=np.float64)
-    if np.linalg.norm(d) < 1e-6 or f > 0.995:
-        return list(pts), f
-    d /= np.linalg.norm(d)
-    M = np.eye(2) - (1.0 - f) * np.outer(d, d)
-    c = np.array([cx, cy])
-    return [tuple(c + M @ (np.array(p) - c)) for p in pts], f
+
+    def normal_at(x, y):
+        v = ni[int(np.clip(round(y), 0, h - 1)), int(np.clip(round(x), 0, w - 1))].astype(np.float64)
+        return v / max(np.linalg.norm(v), 1e-9)
+    n0 = normal_at(cx, cy)
+    if n0[2] < 0.2:
+        return [(cx + x, cy + y) for x, y in shape]
+    right, up = _frame(n0)
+    Tu, Tv = _lift((1.0, 0.0), n0), _lift((0.0, 1.0), n0)
+    J = np.array([[right @ Tu, right @ Tv], [up @ Tu, up @ Tv]])   # canvas -> (right, up) on the surface
+    Ji = np.linalg.inv(J)
+    out = []
+    for x, y in shape:
+        s = np.array([x, -y], dtype=np.float64)                      # wanted offset on the surface
+        d = Ji @ s
+        L = float(np.linalg.norm(s))
+        for _ in range(iterations if L > 0 else 0):
+            n1 = normal_at(cx + d[0], cy + d[1])
+            nm = n0 + n1
+            nm /= np.linalg.norm(nm)
+            if nm[2] < 0.2:
+                break
+            P = _lift(d, nm)                                           # where d lands on the body
+            got = np.array([right @ P, up @ P])
+            got *= np.linalg.norm(P) / max(np.linalg.norm(got), 1e-9)   # its length along the surface
+            d = d + Ji @ (s - got)
+        out.append((cx + float(d[0]), cy + float(d[1])))
+    return out
 
 
 def star_field(c: Canvas, x0, x1, y0, y1, pitch, radius, keep=None, inner=0.17,
-               margin=2.0, min_tilt=0.55, colour=STAR, opacity=1.0, view=None):
+               margin=2.0, min_tilt=0.55, colour=STAR, opacity=1.0, where=None, view=None):
     """Three-pointed stars on a triangular lattice, laid out in this canvas but
-    shaped so that every star keeps its proportions on the car: same size and
-    one arm pointing straight up everywhere.  Only whole stars are drawn: a
-    star that would cross a panel gap, an edge, a strongly foreshortened area
-    or a ``keep`` hole (boolean canvas mask, False = keep clear) is left out
-    instead of being cut.  opacity: number or callable (x, y) -> 0..1, used to
-    fade the field in and out (the stars themselves never change size)."""
+    shaped on the car (on_body): every star has the same size, one arm pointing
+    straight up, and the same colour and opacity everywhere.  Only whole stars
+    are drawn: a star that would cross a panel gap, an edge, a bend, a strongly
+    foreshortened area or a ``keep`` hole (boolean canvas mask, False = keep
+    clear) is left out instead of being cut.  ``where``: optional callable
+    (x, y) -> bool choosing where the field is - a star is either there in
+    full or not at all, never faded."""
+    if callable(opacity):
+        raise TypeError("star_field: opacity is one number for every star; use where= to shape the field")
     view = view or c.view.name
     p = panel_image(view)
     if view not in _EDGE:
         _EDGE[view] = _edge_distance(view)
     edge = _EDGE[view]
+    ni = normal_image(view)
+    fm = facing_min(view)
     h, w = p.shape
+    shape = star3(0.0, 0.0, radius, 0.0, inner)
     polys = []
     for poly in star_lattice(x0, x1, y0, y1, pitch, radius, inner=inner):
-        xs = [q[0] for q in poly]
-        ys = [q[1] for q in poly]
-        cx, cy = float(np.mean(xs)), float(np.mean(ys))
-        pts, f = on_surface(view, poly, cx, cy)
-        ni = normal_image(view)
-        n0 = ni[int(np.clip(cy, 0, h - 1)), int(np.clip(cx, 0, w - 1))]
+        cx = float(np.mean([q[0] for q in poly]))
+        cy = float(np.mean([q[1] for q in poly]))
+        ix0, iy0 = int(np.clip(cx, 0, w - 1)), int(np.clip(cy, 0, h - 1))
+        n0 = ni[iy0, ix0]
         if n0[2] < min_tilt:                 # facing away, or seen too obliquely
             continue
+        if where is not None and not where(cx, cy):
+            continue
+        pid = p[iy0, ix0]
+        if pid == 0:
+            continue
+        pts = on_body(view, shape, cx, cy)
         ok = True
-        pid = p[int(np.clip(cy, 0, h - 1)), int(np.clip(cx, 0, w - 1))]
-        for x, y in pts + [(cx, cy)]:
+        # every vertex and points along every edge (the arms are thin)
+        probe = [(cx, cy)] + list(pts)
+        for (ax_, ay_), (bx_, by_) in zip(pts, pts[1:] + pts[:1]):
+            probe += [(ax_ + (bx_ - ax_) * t, ay_ + (by_ - ay_) * t) for t in (0.25, 0.5, 0.75)]
+        for x, y in probe:
             ix, iy = int(round(x)), int(round(y))
-            if not (0 <= ix < w and 0 <= iy < h) or p[iy, ix] != pid or pid == 0 or edge[iy, ix] < margin:
+            if not (0 <= ix < w and 0 <= iy < h) or p[iy, ix] != pid or edge[iy, ix] < margin:
                 ok = False
                 break
             nv = ni[iy, ix]
-            if nv[2] < min_tilt or float(np.dot(nv, n0)) < 0.94:   # the star would wrap over a bend
-                ok = False
+            if nv[2] < min_tilt or fm[iy, ix] < min_tilt or float(np.dot(nv, n0)) < 0.94:
+                ok = False                   # seen too obliquely, over a fold, or wrapping over a bend
                 break
             if keep is not None and not keep[iy, ix]:
                 ok = False
                 break
         if ok:
-            a = opacity(cx, cy) if callable(opacity) else opacity
-            if a > 0.02:
-                polys.append((round(float(a), 2), pts))
-    for a in sorted({a for a, _ in polys}):
-        c.paint(c.mask_polygons([pts for b, pts in polys if b == a]), colour, a)
+            polys.append(pts)
+    if polys:
+        c.paint(c.mask_polygons(polys), colour, opacity)
     return len(polys)
 
 
@@ -345,7 +416,7 @@ def keep_clear(c: Canvas, rects=(), circles=()):
 
 def surface_decal(img: Image.Image, view: str, cx, cy) -> Image.Image:
     """Pre-squash a decal (rendered at the canvas supersampling) so it keeps its
-    proportions on a tilted part of the body (see on_surface)."""
+    proportions on a tilted part of the body (squashed by the foreshortening, as in on_body)."""
     ni = normal_image(view)
     h, w = ni.shape[:2]
     nx, ny, nv = ni[int(np.clip(cy, 0, h - 1)), int(np.clip(cx, 0, w - 1))]

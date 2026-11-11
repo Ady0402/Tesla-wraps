@@ -26,14 +26,13 @@ def paint_sides() -> dict:
     black = c.gradient_field([(60, CARBON), (c.h, BLACK)], axis="y")
     c.paint(seam_fade(c, 120.0), black)           # starts on the front/rear door gap
 
-    # stars on the black, all one size, brightening as the black deepens
-    def fade(x, y):
-        return min(1.0, seam_darkness(x, y, 120.0) * 1.4) * (1.0 - 0.3 * float(smoothstep(760, 920, x)))
+    # stars on the black: all one size, angle and brightness
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
     sy = shoulder_y(xs)[None, :]
     keep = keep_clear(c, rects=[] + QUARTER_KEEP["rects"], circles=QUARTER_KEEP["circles"])
     keep &= ~((ys >= sy - 2) & (ys <= sy + 26))                  # clear of the pinstripes
-    star_field(c, 548, 990, 48, 290, 25, STAR_R, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2, opacity=fade)
+    star_field(c, 548, 990, 48, 290, 25, STAR_R, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2,
+               where=in_dark(120.0))
 
     # two straight teal pinstripes just below the shoulder crease, ends cut parallel to the door gaps
     def stripe(off, thick, colour):

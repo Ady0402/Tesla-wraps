@@ -53,20 +53,13 @@ def paint_sides() -> dict:
     low = smoothstep(318, 450, X + (Y - 240) * 0.25) * smoothstep(-2, 2, Y - top - 3)
     c.paint(low, black)
 
-    # star mesh behind the front door: every star the same size; the field is
-    # brightest above the flow line and dims below it and toward the tail
-    def fade(x, y):
-        tail = 1.0 - 0.35 * min(1.0, max(0.0, (x - 670) / 250.0))
-        below = y - float(line_top(x)) - 4
-        drop = 1.0 if below < 0 else max(0.25, 1.0 - below / 60.0)
-        return tail * drop
+    # star mesh behind the front door: every star the same size, angle and brightness
     keep = keep_clear(c, rects=[(820, 148, 912, 184), (846, 200, 930, 246)],
                       circles=[(806, 112, 40)])                   # roundel, partner names
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
     top_, thick = line_top(xs)[None, :], line_thickness(xs)[None, :]
     keep &= ~((ys >= top_ - 2) & (ys <= top_ + thick + 2))                   # clear of the flow line
-    star_field(c, 548, 990, 48, 290, 25, STAR_R_B, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2,
-               opacity=fade)
+    star_field(c, 548, 990, 48, 290, 25, STAR_R_B, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2)
 
     # teal: the slanted bar and the flow line
     # (its front end is cut on the same slant as the bar, so the corner of the L is one clean edge)
@@ -124,7 +117,7 @@ def paint_rear():
     c = Canvas("rear", BLACK)
     rear_marks(c)
     keep = keep_clear(c, **REAR_KEEP)
-    star_field(c, 0, c.w, 30, 240, 25, STAR_R_B, keep=keep, inner=0.19, colour=SILVER_HI, opacity=0.7, margin=1.5)
+    star_field(c, 0, c.w, 30, 240, 25, STAR_R_B, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.5)
     return c.out()
 
 
@@ -138,5 +131,5 @@ def build(sides=None):
     painted["hood"] = paint_hood()
     painted["front"] = paint_front()
     painted["rear"] = paint_rear()
-    painted["deck"] = paint_deck(25, STAR_R_B, colour=SILVER_HI, opacity=0.7, inner=0.19)
+    painted["deck"] = paint_deck(25, STAR_R_B, colour=SILVER_HI, inner=0.19)
     return compose(painted, finish=FINISH)

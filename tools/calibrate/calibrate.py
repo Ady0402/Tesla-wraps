@@ -3,8 +3,11 @@
 
     python3 tools/calibrate/calibrate.py <mesh.json> [out-dir]
 
-Writes modely_viewmap.png, modely_projection.json, modely_normals.png and
-modely_height.png (default: tools/wrapkit/data/).
+Writes modely_viewmap.png, modely_projection.json (a polynomial per panel and
+canvas), modely_residual_x.png / modely_residual_y.png (what the polynomial
+misses at each texel, so the mapping is exact even over folds such as the
+liftgate lip), modely_normals.png and modely_height.png (default:
+tools/wrapkit/data/).
 See posmap.py for the input format.  The calibration in this repository was
 measured on the 3D model that the Tesla Wrap Gallery visualizer shows for the
 "Model Y (Pre-2025)"; the model itself is not part of this repository.
@@ -34,6 +37,7 @@ DECK = dict(xl=1.16, z0=-1.50, w=404, h=232)      # plan view of the liftgate's 
 STRIP_IDS = {"rail_L": 6, "rail_R": 7, "mirror_L": 8, "mirror_R": 9}
 REGION_VIEW = {1: "side_L", 2: "side_R", 3: "hood", 4: "front", 5: "rear", 10: "deck"}   # texel id -> canvas
 DEG = 7
+RES_SCALE = 256.0              # residual maps store canvas px * 256 around 32768
 
 
 def project(view, P):
@@ -78,6 +82,10 @@ def main(mesh_json, out_dir):
         else: view[m] = STRIP_IDS[name]
     yy, xx = np.mgrid[0:N, 0:N]
     regions = []
+    # what the polynomial misses (exact - fitted canvas position at each texel centre): a fold like
+    # the liftgate lip is more than a polynomial can follow, so the remainder is stored per texel
+    res_x = np.zeros((N, N), np.float64)
+    res_y = np.zeros((N, N), np.float64)
     for pid, pname in inv.items():
         for vid, vname in REGION_VIEW.items():
             m = (lab == pid) & (view == vid)
@@ -95,6 +103,8 @@ def main(mesh_json, out_dir):
             cX, *_ = np.linalg.lstsq(A, X, rcond=None)
             cY, *_ = np.linalg.lstsq(A, Y, rcond=None)
             r = np.hypot(A @ cX - X, A @ cY - Y)
+            res_x[m] = X - A @ cX
+            res_y[m] = Y - A @ cY
             regions.append(dict(panel=pname, view=vname, id=vid, cx=cx, cy=cy, scale=sc,
                                 x=[float(v) for v in cX], y=[float(v) for v in cY]))
             print(f"{pname:13s} {vname:7s} n={n:6d}  fit error px: rms {np.sqrt((r ** 2).mean()):.2f}  "
@@ -112,6 +122,10 @@ def main(mesh_json, out_dir):
     hmm = np.zeros((N, N), np.uint16)
     hmm[on] = np.clip(np.rint(pos[on, 1] * 1000.0), 1, 65535).astype(np.uint16)
     Image.fromarray(hmm).save(out / "modely_height.png", optimize=True)
+    # the remainder in 1/256 px around 32768 (16-bit), one image per canvas axis
+    for name, res in (("x", res_x), ("y", res_y)):
+        enc16 = np.clip(np.rint(res * RES_SCALE) + 32768, 0, 65535).astype(np.uint16)
+        Image.fromarray(enc16).save(out / f"modely_residual_{name}.png", optimize=True)
     canvases = {"side_L": [SIDE_W, SIDE_H], "side_R": [SIDE_W, SIDE_H], "hood": [HOOD["w"], HOOD["h"]],
                 "front": [FRONT["w"], FRONT["h"]], "rear": [REAR["w"], REAR["h"]], "deck": [DECK["w"], DECK["h"]]}
     json.dump(dict(pixels_per_metre=S, degree=DEG, canvases=canvases, regions=regions),

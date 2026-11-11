@@ -25,13 +25,12 @@ def fade_side(length=180.0, extra_keep=(), pitch=25, stars=True) -> tuple:
     c.paint(t, black)
     gap = door_edge("rear_door_L", "front")
 
-    def fade(x, y):
-        return min(1.0, seam_darkness(x, y, length) * 1.25) * (1.0 - 0.3 * float(smoothstep(780, 920, x)))
+    fade = in_dark(length)
     if stars:
         keep = keep_clear(c, rects=list(QUARTER_KEEP["rects"]) + list(extra_keep),
                           circles=QUARTER_KEEP["circles"])
         star_field(c, float(gap(150)) + 14, 990, 46, 290, pitch, STAR_R, keep=keep, inner=0.19,
-                   colour=SILVER_HI, margin=1.2, opacity=fade)
+                   colour=SILVER_HI, margin=1.2, where=fade)
     fender_marks(s)
     quarter_marks(s)
     return s, c, fade
