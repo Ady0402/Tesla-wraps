@@ -192,9 +192,10 @@ def brushed(c: Canvas, amount: float = 0.035, along: str = "x", seed: int = 7):
 
 
 def silver_gradient(c: Canvas):
-    """Light-to-dark layers of silver down the body side, with a brushed grain -
-    the metal look comes from these tones rather than from painted reflections."""
-    return c.gradient_field(SIDE_TONES, axis="y") * brushed(c)
+    """Light-to-dark layers of silver down the body side - the metal look comes
+    from these tones rather than from painted reflections (no brushed grain:
+    owner's call)."""
+    return c.gradient_field(SIDE_TONES, axis="y")
 
 
 def bumper_gradient(c: Canvas, y0=0.0):
@@ -219,7 +220,7 @@ def hood_base(c: Canvas):
     deeper toward the nose and toward the side edges."""
     X, Y = c.grid()
     field = c.gradient_field([(8, "#EDEFF1"), (c.h * 0.5, "#C9CDD1"), (c.h - 10, "#A9AEB3")], axis="y")
-    c.paint(np.ones_like(X), field * brushed(c, along="y", seed=11))
+    c.paint(np.ones_like(X), field)
     side = np.clip(np.abs(X - c.w / 2) / (c.w / 2), 0, 1)
     c.paint(0.65 * smoothstep(0.3, 1.0, side), "#8F959C")
 
