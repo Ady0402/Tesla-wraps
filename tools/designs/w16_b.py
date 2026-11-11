@@ -132,9 +132,11 @@ def paint_rear():
     return c.out()
 
 
-def build():
+def build(sides=None):
+    """sides: optional function returning the two side canvases, so the
+    variants (w16_b2..b4) can reuse this design's front, rear, rails and mirrors."""
     painted = {}
-    painted.update(paint_sides())
+    painted.update((sides or paint_sides)())
     painted.update(paint_rails())
     painted.update(paint_mirrors())
     painted["hood"] = paint_hood()

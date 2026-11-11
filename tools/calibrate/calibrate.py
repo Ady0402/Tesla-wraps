@@ -3,8 +3,8 @@
 
     python3 tools/calibrate/calibrate.py <mesh.json> [out-dir]
 
-Writes modely_viewmap.png, modely_projection.json and modely_normals.png
-(default: tools/wrapkit/data/).
+Writes modely_viewmap.png, modely_projection.json, modely_normals.png and
+modely_height.png (default: tools/wrapkit/data/).
 See posmap.py for the input format.  The calibration in this repository was
 measured on the 3D model that the Tesla Wrap Gallery visualizer shows for the
 "Model Y (Pre-2025)"; the model itself is not part of this repository.
@@ -108,6 +108,10 @@ def main(mesh_json, out_dir):
     on = view > 0
     enc[on] = np.clip(np.rint((nrm[on] + 1.0) * 127.5), 1, 255).astype(np.uint8)
     Image.fromarray(enc, "RGB").save(out / "modely_normals.png", optimize=True)
+    # height above the ground of every texel the car shows, in millimetres (16-bit); 0 elsewhere
+    hmm = np.zeros((N, N), np.uint16)
+    hmm[on] = np.clip(np.rint(pos[on, 1] * 1000.0), 1, 65535).astype(np.uint16)
+    Image.fromarray(hmm).save(out / "modely_height.png", optimize=True)
     canvases = {"side_L": [SIDE_W, SIDE_H], "side_R": [SIDE_W, SIDE_H], "hood": [HOOD["w"], HOOD["h"]],
                 "front": [FRONT["w"], FRONT["h"]], "rear": [REAR["w"], REAR["h"]], "deck": [DECK["w"], DECK["h"]]}
     json.dump(dict(pixels_per_metre=S, degree=DEG, canvases=canvases, regions=regions),

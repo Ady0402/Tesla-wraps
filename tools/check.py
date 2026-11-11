@@ -16,7 +16,7 @@ def main(paths):
     for p in paths:
         r = validate(p)
         status = "OK  " if r["ok"] else "FAIL"
-        alpha = {True: "alpha = template", False: f"alpha differs on {r['alpha_diff_pixels']} px",
+        alpha = {True: "alpha = template", False: f"alpha <= template, {100 * r.get('translucent_share', 0):.0f}% translucent",
                  None: "alpha not compared"}[r["alpha_identical"]]
         print(f"{status} {r['name']:30s} {r['size'][0]}x{r['size'][1]}  {r['bit_depth']}-bit {r['colour_type']:5s} "
               f"{r['bytes']:>8d} bytes  {alpha}")

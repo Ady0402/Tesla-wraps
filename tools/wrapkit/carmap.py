@@ -175,3 +175,13 @@ def normal_image(view: str) -> np.ndarray:
         hit[iy[ok], ix[ok]] = True
     _, idx = ndi.distance_transform_edt(~hit, return_indices=True)
     return img[idx[0], idx[1]]
+
+
+@lru_cache(maxsize=1)
+def height() -> np.ndarray:
+    """(1024, 1024) float32 height above the ground in metres of every texel the
+    car shows (0 elsewhere).  Handy for graphics that must stay level on the
+    car, such as a stripe round a mirror cap."""
+    h = np.asarray(Image.open(DATA / "modely_height.png")).astype(np.float32) / 1000.0
+    h[~on_car()] = 0.0
+    return h

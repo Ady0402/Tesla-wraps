@@ -16,6 +16,8 @@ def compose(painted: dict, finish=None) -> np.ndarray:
 
     finish: optional callable (rgb float texture) -> rgb, applied to the texels
     the car shows before the hidden margin is filled (e.g. finish.metallic()).
+    If it also has ``opacity(rgb)``, the wrap's alpha becomes the template
+    alpha times that opacity (computed from the unshaded design colours).
 
     Projection canvases may be handed over at r times their nominal size (the
     drawing surface's supersampling); each texel averages 2 x 2 samples that
@@ -56,7 +58,10 @@ def compose(painted: dict, finish=None) -> np.ndarray:
         rgb[v.oy:v.oy + rh, v.ox:v.ox + rw][m] = rot[m]
         done[v.oy:v.oy + rh, v.ox:v.ox + rw] |= m
     assert (done == on_car()).all()
+    skin = np.ones((SIZE, SIZE), dtype=np.float32)
     if finish is not None:
+        if hasattr(finish, "opacity"):
+            skin = np.where(done, finish.opacity(rgb), 1.0).astype(np.float32)
         rgb = np.asarray(finish(rgb), dtype=np.float32)
     # hidden margin + bleed: nearest visible colour of the same panel
     alpha = template_alpha()
@@ -69,10 +74,12 @@ def compose(painted: dict, finish=None) -> np.ndarray:
             continue
         _, idx = ndi.distance_transform_edt(~src, return_indices=True)
         rgb[want] = rgb[idx[0][want], idx[1][want]]
+        skin[want] = skin[idx[0][want], idx[1][want]]
     out = np.zeros((SIZE, SIZE, 4), dtype=np.uint8)
     out[..., :3] = np.clip(np.rint(rgb), 0, 255).astype(np.uint8)
     out[..., :3][~reach] = 0
-    out[..., 3] = alpha
+    out[..., 3] = np.clip(np.rint(alpha.astype(np.float32) * skin), 0, 255).astype(np.uint8)
+    out[..., 3][alpha == 0] = 0
     assert not ((alpha > 0) & ~reach).any()
     return out
 

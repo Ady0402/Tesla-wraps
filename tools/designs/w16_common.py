@@ -27,10 +27,11 @@ NOSE = "#B2B7BC"        # silver as it reaches the nose (hood front edge / top o
 BUMPER_MID = "#42464B"
 BUMPER_LOW = "#131518"
 
-# the car renders a wrap as matte vinyl, so the metallic look is painted in
-# (wrapkit/finish.py): studio reflections that follow the surface, plus a
-# little light along the body lines (crease_gain)
-FINISH = metallic(1.0, crease_gain=55.0)
+# the car renders an opaque wrap as matte vinyl (wrapkit/finish.py): silver and
+# black are made translucent so the car's own glossy paint shows through
+# (silver_alpha / black_alpha; text, numbers and teal stay opaque), and studio
+# reflections plus a little light along the body lines are painted in
+FINISH = metallic(1.0, crease_gain=55.0, silver_alpha=0.45, black_alpha=1.0)
 
 # ---- fonts ----------------------------------------------------------------
 F_WORD = "Montserrat-ExtraBold.otf"       # PETRONAS-style wide bold caps
@@ -54,6 +55,30 @@ REAR_BADGE = (200.0, 90.0, 16.0)  # Tesla badge on the liftgate in the rear canv
 BUMPER_SIDE_Y0 = 165.3        # a point at height Y on the front canvas sits at Y + this on the side canvas
 
 CREASE_X0, CREASE_Y0, CREASE_SLOPE = 390.0, 248.0, -0.09   # the lower door crease: rises toward the rear
+
+
+def shoulder_y(x):
+    """The shoulder crease (the body line the door handles sit on), measured on
+    the model: Y 156 at the front of the front door rising to 141 on the rear door."""
+    return 156.0 - 0.0625 * (np.asarray(x, dtype=np.float64) - 380.0)
+
+
+def door_edge(panel: str, which: str):
+    """Straight line x(y) fitted to a door's front or rear edge in side_L
+    (the door gap), so graphics can run parallel to it."""
+    from wrapkit import panel_image
+    from wrapkit.template import PANELS
+    p = panel_image("side_L") == PANELS[panel]
+    ys, xs = [], []
+    for y in range(p.shape[0]):
+        row = np.nonzero(p[y])[0]
+        if len(row) > 40:
+            ys.append(y)
+            xs.append(row.min() if which == "front" else row.max())
+    ys, xs = np.array(ys, float), np.array(xs, float)
+    keep = (ys > ys.min() + 10) & (ys < ys.max() - 10)
+    a, b = np.polyfit(ys[keep], xs[keep], 1)
+    return lambda y: a * np.asarray(y, dtype=np.float64) + b
 
 
 def belt_y(x):
@@ -238,7 +263,7 @@ def on_surface(view: str, pts, cx, cy):
 
 
 def star_field(c: Canvas, x0, x1, y0, y1, pitch, radius, keep=None, inner=0.17,
-               margin=2.0, min_tilt=0.35, colour=STAR, opacity=1.0, view=None):
+               margin=2.0, min_tilt=0.55, colour=STAR, opacity=1.0, view=None):
     """Three-pointed stars on a triangular lattice, laid out in this canvas but
     shaped so that every star keeps its proportions on the car: same size and
     one arm pointing straight up everywhere.  Only whole stars are drawn: a
@@ -258,13 +283,19 @@ def star_field(c: Canvas, x0, x1, y0, y1, pitch, radius, keep=None, inner=0.17,
         ys = [q[1] for q in poly]
         cx, cy = float(np.mean(xs)), float(np.mean(ys))
         pts, f = on_surface(view, poly, cx, cy)
-        if f < min_tilt:
+        ni = normal_image(view)
+        n0 = ni[int(np.clip(cy, 0, h - 1)), int(np.clip(cx, 0, w - 1))]
+        if n0[2] < min_tilt:                 # facing away, or seen too obliquely
             continue
         ok = True
         pid = p[int(np.clip(cy, 0, h - 1)), int(np.clip(cx, 0, w - 1))]
         for x, y in pts + [(cx, cy)]:
             ix, iy = int(round(x)), int(round(y))
             if not (0 <= ix < w and 0 <= iy < h) or p[iy, ix] != pid or pid == 0 or edge[iy, ix] < margin:
+                ok = False
+                break
+            nv = ni[iy, ix]
+            if nv[2] < min_tilt or float(np.dot(nv, n0)) < 0.94:   # the star would wrap over a bend
                 ok = False
                 break
             if keep is not None and not keep[iy, ix]:
@@ -386,11 +417,17 @@ def black_rails(teal_foot=False) -> Mirrored:
     return r
 
 
-def striped_mirrors() -> dict:
-    """Black mirror caps with a teal stripe running along the car.  On the cap's
-    canvas X goes up the mirror and Y goes outward / backward along it (measured
-    on the 3D model), so a level stripe is an upright band of the canvas."""
-    m = Mirrored("mirror_L", base=BLACK)
-    c = m.art
-    c.paint(c.mask_rect(c.w * 0.40, -2, c.w * 0.60, c.h + 2), TEAL)
-    return m.render()
+def striped_mirrors(y0=1.312, y1=1.338) -> dict:
+    """Black mirror caps with a level teal stripe: every point of the cap between
+    heights y0 and y1 (metres above the ground, measured on the 3D model), so it
+    reads as a horizontal line from the side and from the front."""
+    out = {}
+    for name in ("mirror_L", "mirror_R"):
+        c = Canvas(name, BLACK)
+        h = np.repeat(np.repeat(c.view.height(), 4, 0), 4, 1)
+        h = ndi.grey_dilation(h, size=(9, 9))                 # carry the band into the hidden rim
+        band = ((h >= y0) & (h <= y1)).astype(np.float32)
+        band = ndi.uniform_filter(band, 3)                     # soften the staircase
+        c.paint(band, TEAL)
+        out[name] = c.out()
+    return out

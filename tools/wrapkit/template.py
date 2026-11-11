@@ -148,6 +148,11 @@ class StripView:
         """(h, w) mask of the whole island, hidden margin included."""
         return self._cut(panel_mask(self.panel))
 
+    def height(self) -> np.ndarray:
+        """(h, w) height above the ground (m) of each pixel the car shows, 0 elsewhere."""
+        from .carmap import height
+        return self._cut(height() * panel_mask(self.panel))
+
 
 @dataclass(frozen=True)
 class ProjView:

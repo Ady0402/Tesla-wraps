@@ -110,9 +110,15 @@ def validate(path, name: str | None = None) -> dict:
         diff = int((alpha != ref).sum())
         report["alpha_identical"] = diff == 0
         report["alpha_diff_pixels"] = diff
-        unpainted = int(((ref == 255) & (alpha < 255)).sum())
-        if unpainted:
-            problems.append(f"{unpainted} panel pixels are not fully opaque")
+        # translucency inside the panels is allowed (the car's own paint shows through,
+        # as in Tesla's Acid_Drip example); never more opaque than the template
+        report["translucent_share"] = round(float(((ref == 255) & (alpha < 255)).sum()) / max(int((ref == 255).sum()), 1), 3)
+        over = int((alpha.astype(int) > ref.astype(int)).sum())
+        if over:
+            problems.append(f"{over} pixels are more opaque than the template allows")
+        holes = int(((ref == 255) & (alpha == 0)).sum())
+        if holes:
+            problems.append(f"{holes} panel pixels are fully transparent")
         stray = int(((ref == 0) & (alpha > 0)).sum())
         if stray:
             problems.append(f"{stray} pixels painted outside the template islands")

@@ -8,7 +8,7 @@
 Each design module in tools/designs/ exposes NAME, TITLE and build() -> RGBA
 texture.  Wraps are written to modely/w16/<NAME>.png, a flat sheet of every
 side to modely/w16/preview/<NAME>_sheet.png and, with --render, 3D pictures to
-modely/w16/preview/<NAME>_3d.jpg plus preview/compare.jpg.
+modely/w16/preview/<NAME>_3d.jpg plus the side-by-side pictures in COMPARE.
 """
 from __future__ import annotations
 
@@ -27,7 +27,10 @@ from wrapkit import save_sheet, save_wrap  # noqa: E402
 
 REPO = HERE.parent
 OUT = REPO / "modely" / "w16"
-DESIGNS = ["w16_a", "w16_b", "w16_c", "w16_d"]
+DESIGNS = ["w16_a", "w16_b", "w16_c", "w16_d", "w16_b2", "w16_b3", "w16_b4"]
+# preview pictures that put several designs side by side
+COMPARE = {"compare.jpg": ["w16_a", "w16_b", "w16_c", "w16_d"],
+           "compare_b_sides.jpg": ["w16_b", "w16_b2", "w16_b3", "w16_b4"]}
 BG = (228, 229, 233)
 
 
@@ -96,17 +99,23 @@ def render_3d(out_dir: Path, names) -> bool:
                 y += max(i.height for i in row)
             sheet.save(out_dir / "preview" / f"{m.NAME}_3d.jpg", quality=90, optimize=True)
             cells.append((m, fit(v["fl"], 760), fit(v["left"], 760)))
-        cw = 760
-        ch = 84 + max(c[1].height for c in cells) + max(c[2].height for c in cells)
-        comp = Image.new("RGB", (cw * len(cells), ch), BG)
-        d = ImageDraw.Draw(comp)
-        for i, (m, q, side) in enumerate(cells):
-            x = i * cw
-            d.text((x + 20, 12), m.TITLE, font=big, fill=(20, 22, 26))
-            d.text((x + 22, 60), f"{m.NAME}.png", font=small, fill=(0, 130, 120))
-            comp.paste(q, (x, 84))
-            comp.paste(side, (x, 84 + max(c[1].height for c in cells)))
-        comp.save(out_dir / "preview" / "compare.jpg", quality=90, optimize=True)
+        by_name = {m.__name__.split(".")[-1]: cell for m, cell in zip(mods, cells)}
+        for fname, group in COMPARE.items():
+            chosen = [by_name[n] for n in group if n in by_name]
+            if len(chosen) < 2:
+                continue
+            cw = 760
+            hq = max(c[1].height for c in chosen)
+            ch = 84 + hq + max(c[2].height for c in chosen)
+            comp = Image.new("RGB", (cw * len(chosen), ch), BG)
+            d = ImageDraw.Draw(comp)
+            for i, (m, q, side) in enumerate(chosen):
+                x = i * cw
+                d.text((x + 20, 12), m.TITLE, font=big, fill=(20, 22, 26))
+                d.text((x + 22, 60), f"{m.NAME}.png", font=small, fill=(0, 130, 120))
+                comp.paste(q, (x, 84))
+                comp.paste(side, (x, 84 + hq))
+            comp.save(out_dir / "preview" / fname, quality=90, optimize=True)
     return True
 
 

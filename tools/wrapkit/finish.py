@@ -1,8 +1,18 @@
 """Paint finishes baked into the texture.
 
-The car (and the Tesla app) render a wrap as matte vinyl: whatever colour the
-texture has is lit like a flat, rough surface.  A metallic look therefore has to
-be painted in.  ``metallic`` does that from the surface normal of every texel
+The car (and the Tesla app) render an opaque wrap as matte vinyl.  Their
+shader blends the wrap over the car's own paint by the wrap's alpha:
+
+    colour    = mix(paint colour, wrap colour, alpha)
+    roughness = mix(paint roughness ~0.1, 0.9, alpha)
+    metallic  = mix(paint metallic ~0.7, 0.0, alpha)
+
+so the only way to get a real glossy metallic surface is to let some of the
+car's paint through: ``Metallic.opacity`` makes the silver (and, a little, the
+black) parts of a design translucent while text, numbers and coloured
+graphics stay fully opaque.  The silver then takes the colour of the car's
+paint, so it is meant for a silver / grey car (or a silver colour chosen in
+Paint Shop).  On top of that, a metallic look is also painted in:  ``metallic`` does that from the surface normal of every texel
 (measured on the 3D model, see carmap.py): it works out which part of a simple
 photo-studio surrounding each point of the body would mirror - floor, a dark
 horizon band, a bright horizon line, open sky, an overhead light box - for a
@@ -45,6 +55,8 @@ class Metallic:
     box: float = 1.0
     line_gain: float = 62.0
     crease_gain: float = 0.0
+    silver_alpha: float = 1.0      # wrap opacity on silver / grey paint (1 = opaque, matte)
+    black_alpha: float = 1.0       # wrap opacity on black paint
 
     def environment(self, elev_deg: np.ndarray):
         """Brightness (0..1) and highlight (0..1) mirrored from a direction at
@@ -63,6 +75,21 @@ class Metallic:
         box_edge = np.exp(-0.5 * ((e - 34.0) / 3.0) ** 2) * 0.55               # the edges of the light box
         box_edge = np.maximum(box_edge, np.exp(-0.5 * ((e - 66.0) / 3.0) ** 2) * 0.35)
         return val.astype(np.float32), np.maximum(line, box_edge).astype(np.float32)
+
+    def opacity(self, rgb: np.ndarray) -> np.ndarray:
+        """Wrap opacity (0..1) per texel from the design colour: neutral greys
+        and silvers get silver_alpha, near-black black_alpha, white and any
+        clearly coloured pixel stay opaque.  Smooth in colour, so anti-aliased
+        edges get in-between values."""
+        rgb = np.asarray(rgb, dtype=np.float32)
+        mx, mn = rgb.max(-1), rgb.min(-1)
+        sat = (mx - mn) / np.maximum(mx, 80.0)        # floor: dark colours have noisy ratios
+        lum = rgb @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+        t = np.clip((sat - 0.06) / 0.10, 0, 1)
+        neutral = 1.0 - t * t * (3 - 2 * t)
+        a = np.interp(lum, [0, 45, 150, 226, 240, 256],
+                      [self.black_alpha, self.black_alpha, self.silver_alpha, self.silver_alpha, 1.0, 1.0])
+        return (1.0 - neutral * (1.0 - a)).astype(np.float32)
 
     def __call__(self, rgb: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
         """Shade an (1024, 1024, 3) float texture; texels outside `mask` (default:
