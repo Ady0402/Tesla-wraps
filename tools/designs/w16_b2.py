@@ -24,15 +24,14 @@ def paint_sides() -> dict:
     X, Y = c.grid()
     silver_side(c)
     black = c.gradient_field([(60, CARBON), (c.h, BLACK)], axis="y")
-    edge = 560 + (Y - 190) * 0.22                       # fade leans forward at the top
-    c.paint(smoothstep(-10, 110, X - edge), black)
+    c.paint(seam_fade(c, 120.0), black)           # starts on the front/rear door gap
 
     # stars on the black, all one size, brightening as the black deepens
     def fade(x, y):
-        return float(smoothstep(560, 640, x - (y - 190) * 0.22)) * (1.0 - 0.3 * float(smoothstep(760, 920, x)))
+        return min(1.0, seam_darkness(x, y, 120.0) * 1.4) * (1.0 - 0.3 * float(smoothstep(760, 920, x)))
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
     sy = shoulder_y(xs)[None, :]
-    keep = keep_clear(c, rects=[(560, 252, 650, 272)] + QUARTER_KEEP["rects"], circles=QUARTER_KEEP["circles"])
+    keep = keep_clear(c, rects=[] + QUARTER_KEEP["rects"], circles=QUARTER_KEEP["circles"])
     keep &= ~((ys >= sy - 2) & (ys <= sy + 26))                  # clear of the pinstripes
     star_field(c, 548, 990, 48, 290, 25, STAR_R, keep=keep, inner=0.19, colour=SILVER_HI, margin=1.2, opacity=fade)
 
@@ -50,7 +49,6 @@ def paint_sides() -> dict:
 
     s.decal(wordmark("PETRONAS", 24, BLACK, tracking=0.8), 410, 218)
     s.decal(text_decal("TeamViewer", F_SANS, 11, fill=BLACK), 410, 245)
-    s.decal(text_decal("Mercedes-Benz", "LiberationSerif-BoldItalic.ttf", 11.5, fill=WHITE), 604, 262)
     fender_marks(s)
     quarter_marks(s)
     return s.render()

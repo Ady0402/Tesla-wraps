@@ -46,7 +46,7 @@ def paint_sides() -> dict:
 
 
 def paint_rails() -> dict:
-    r = black_rails(teal_foot=False)
+    r = black_rails(pillar_line=False)
     c = r.art
     xs = np.linspace(14, c.w - 14, 60)
     c.line([(x, float(rail_mid(x))) for x in xs], 2.6, TEAL)
@@ -54,7 +54,7 @@ def paint_rails() -> dict:
 
 
 def paint_mirrors() -> dict:
-    return Mirrored("mirror_L", base=TEAL).render()
+    return striped_mirrors()
 
 
 def paint_hood():
@@ -66,7 +66,7 @@ def paint_hood():
     c.paint(smoothstep(46, 122, Y), silver.px)
     star_field(c, 0, c.w, 10, 150, 29, STAR_R_D, inner=0.15, colour=STAR,
                opacity=lambda x, y: float(np.interp(y, [20, 60, 110, 140], [0.5, 1.0, 1.0, 0.0])))
-    c.paint(hood_edge_bands(c, 7, lambda y: float(np.interp(y, [14, 70, 236], [7, 7, 2]))), TEAL)
+    c.paint(hood_edge_bands(c, -4, lambda y: float(np.interp(y, [14, 70, 240], [11, 11, 6]))), TEAL)
     # number kept clear of the Tesla badge that sits near the nose
     c.stamp(block_digits(NUMBER, 30, BLACK, weight=0.23, shear=0.1), c.w / 2 + 1, 164)
     return c.out()

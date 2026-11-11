@@ -34,7 +34,7 @@ def paint_sides() -> dict:
 
     def fade(x, y):
         return float(np.interp(x, [560, 600, 760, 920], [0.6, 1.0, 1.0, 0.7]))
-    keep = keep_clear(c, rects=[(554, 164, 704, 192), (560, 252, 650, 272)] + QUARTER_KEEP["rects"],
+    keep = keep_clear(c, rects=[(554, 164, 704, 192)] + QUARTER_KEEP["rects"],
                       circles=QUARTER_KEEP["circles"])
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
     keep &= xs[None, :] > gap(ys) + 22
@@ -45,7 +45,6 @@ def paint_sides() -> dict:
     s.decal(wordmark("PETRONAS", 22, BLACK, tracking=0.8), 404, 236)
     s.decal(text_decal("TeamViewer", F_SANS, 10.5, fill=BLACK), 404, 140)
     s.decal(wordmark("PETRONAS", 16, WHITE, tracking=0.8), 628, 178)
-    s.decal(text_decal("Mercedes-Benz", "LiberationSerif-BoldItalic.ttf", 11.5, fill=WHITE), 604, 262)
     fender_marks(s)
     quarter_marks(s, roundel=True)
     return s.render()

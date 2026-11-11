@@ -60,8 +60,8 @@ def paint_sides() -> dict:
         below = y - float(line_top(x)) - 4
         drop = 1.0 if below < 0 else max(0.25, 1.0 - below / 60.0)
         return tail * drop
-    keep = keep_clear(c, rects=[(820, 148, 912, 184), (846, 200, 930, 246), (560, 250, 650, 274)],
-                      circles=[(806, 112, 40)])                   # roundel, partner names, Mercedes-Benz
+    keep = keep_clear(c, rects=[(820, 148, 912, 184), (846, 200, 930, 246)],
+                      circles=[(806, 112, 40)])                   # roundel, partner names
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
     top_, thick = line_top(xs)[None, :], line_thickness(xs)[None, :]
     keep &= ~((ys >= top_ - 2) & (ys <= top_ + thick + 2))                   # clear of the flow line
@@ -85,10 +85,9 @@ def paint_sides() -> dict:
 
     s.decal(text_decal("TeamViewer", F_SANS, 10.5, fill=WHITE), 426, 135)
     s.decal(wordmark("PETRONAS", 23.5, WHITE, tracking=0.8, stroke=1.0, stroke_fill="#2E3237"), 443, 248)
-    # on the flat of the fender, clear of the side indicator (X 238-282, Y 152-163)
-    s.decal(wordmark("AMG", 15, BLACK, font=F_BLACK_IT, tracking=0.4, squeeze=1.25), 212, 138)
-    s.decal(text_decal("IWC", F_SERIF, 14, fill=BLACK, tracking=0.8), 160, 141)
-    s.decal(text_decal("Mercedes-Benz", "LiberationSerif-BoldItalic.ttf", 11.5, fill=WHITE), 604, 262)
+    # on the flat of the fender, clear of the side indicator (X 238-282, Y 152-163);
+    # no car-brand lettering (owner's request), partners only
+    s.decal(text_decal("IWC", F_SERIF, 16, fill=BLACK, tracking=1.0), 186, 144)
     # race number roundel on the rear quarter panel
     s.decal(layer(box_decal(64, 40, BLACK, radius=20, outline=TEAL, outline_width=2.4),
                   block_digits(NUMBER, 22, TEAL, weight=0.23)), 806, 112, surface=True)
@@ -100,15 +99,12 @@ def paint_sides() -> dict:
 
 
 def paint_rails() -> dict:
-    r = black_rails()
-    for txt, side_x, font in (("CROWDSTRIKE", 500, F_COND), ("SOLERA", 596, F_SANS), ("WhatsApp", 686, F_SANS)):
-        x = float(rail_x(side_x))
-        r.decal(text_decal(txt, font, 10.5 if font == F_COND else 9, fill=WHITE, tracking=0.5), x, float(rail_mid(x)) + 0.5)
-    return r.render()
+    # plain black A-pillars and roof rails: no lettering up there (owner's request)
+    return black_rails().render()
 
 
 def paint_mirrors() -> dict:
-    return Mirrored("mirror_L", base=TEAL).render()
+    return striped_mirrors()
 
 
 def paint_hood():

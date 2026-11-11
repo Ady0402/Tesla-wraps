@@ -55,8 +55,17 @@ class Metallic:
     box: float = 1.0
     line_gain: float = 62.0
     crease_gain: float = 0.0
+    shade_lo: float = 0.56         # paint brightness where the darkest part of the studio is mirrored
+    shade_hi: float = 1.18         # ... and where the brightest part is
     silver_alpha: float = 1.0      # wrap opacity on silver / grey paint (1 = opaque, matte)
     black_alpha: float = 1.0       # wrap opacity on black paint
+    compensate: float = 3.0        # on translucent texels, amplify the painted light and shade by
+                                   # up to this factor (1/alpha), since only alpha of it shows on the car
+    shade_alpha: float = 0.0       # also put the light and shade into the opacity of translucent silver:
+                                   # where the studio mirrors dark floor the wrap covers more (darker,
+                                   # duller), on highlights and body lines it covers less (the car's
+                                   # glossy paint shows through); 0 = off, 1 = full
+    alpha_range: tuple = (0.08, 0.8)   # opacity limits for silver when shade_alpha is on
 
     def environment(self, elev_deg: np.ndarray):
         """Brightness (0..1) and highlight (0..1) mirrored from a direction at
@@ -76,7 +85,7 @@ class Metallic:
         box_edge = np.maximum(box_edge, np.exp(-0.5 * ((e - 66.0) / 3.0) ** 2) * 0.35)
         return val.astype(np.float32), np.maximum(line, box_edge).astype(np.float32)
 
-    def opacity(self, rgb: np.ndarray) -> np.ndarray:
+    def opacity(self, rgb: np.ndarray, shaded: bool = True) -> np.ndarray:
         """Wrap opacity (0..1) per texel from the design colour: neutral greys
         and silvers get silver_alpha, near-black black_alpha, white and any
         clearly coloured pixel stay opaque.  Smooth in colour, so anti-aliased
@@ -89,15 +98,24 @@ class Metallic:
         neutral = 1.0 - t * t * (3 - 2 * t)
         a = np.interp(lum, [0, 45, 150, 226, 240, 256],
                       [self.black_alpha, self.black_alpha, self.silver_alpha, self.silver_alpha, 1.0, 1.0])
-        return (1.0 - neutral * (1.0 - a)).astype(np.float32)
+        a = 1.0 - neutral * (1.0 - a)
+        if shaded and self.shade_alpha > 0 and self.silver_alpha < 1.0 and self.strength > 0 \
+                and rgb.shape[:2] == on_car().shape:
+            shade, add = self.shading()
+            light = (shade - 1.0) + add / 200.0                    # < 0 in shade, > 0 on highlights
+            lo, hi = self.alpha_range
+            dark_part = np.clip(-light / 0.32, 0, 1)
+            bright_part = np.clip(light / 0.35, 0, 1)
+            a_s = self.silver_alpha + (hi - self.silver_alpha) * dark_part - (self.silver_alpha - lo) * bright_part
+            how_silver = np.clip((1.0 - a) / max(1.0 - self.silver_alpha, 1e-3), 0, 1)
+            a = a + self.shade_alpha * how_silver * (a_s - self.silver_alpha)
+        return np.clip(a, 0, 1).astype(np.float32)
 
-    def __call__(self, rgb: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
-        """Shade an (1024, 1024, 3) float texture; texels outside `mask` (default:
-        everything the car shows) are left alone."""
-        if self.strength <= 0:
-            return rgb
+    def shading(self):
+        """(shade factor, additive light) per texel - see __call__."""
+        if getattr(self, "_shading", None) is not None:
+            return self._shading
         n = normals()
-        on = on_car() if mask is None else (mask & on_car())
         lab = panel_labels()
         # horizontal direction the viewer looks from: along the panel's own normal,
         # pulled toward the front or the back for panels mostly seen from there
@@ -115,13 +133,29 @@ class Metallic:
         elev = np.degrees(np.arcsin(np.clip(r[..., 1], -1, 1)))
         val, hi = self.environment(elev)
         k = self.strength
-        shade = 1.0 + k * (0.56 + 0.62 * val - 1.0)                             # 0.68 .. 1.18 of the paint colour
+        shade = 1.0 + k * (self.shade_lo + (self.shade_hi - self.shade_lo) * val - 1.0)
         add = self.line_gain * hi
         if self.crease_gain:
             add = add + self.crease_gain * creases()
+        object.__setattr__(self, "_shading", (shade.astype(np.float32), (k * add).astype(np.float32)))
+        return self._shading
+
+    def __call__(self, rgb: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
+        """Shade an (1024, 1024, 3) float texture; texels outside `mask` (default:
+        everything the car shows) are left alone."""
+        if self.strength <= 0:
+            return rgb
+        on = on_car() if mask is None else (mask & on_car())
+        shade, add = self.shading()
         out = rgb.copy()
         o = on
-        out[o] = rgb[o] * shade[o][:, None] + (k * add[o])[:, None]
+        out[o] = rgb[o] * shade[o][:, None] + add[o][:, None]
+        if self.compensate > 1.0 and (self.silver_alpha < 1.0 or self.black_alpha < 1.0):
+            # the car shows only alpha of the wrap over its own paint (whose colour is close to the
+            # design's silver), so push the shading out by 1/alpha to keep the same light and shade
+            a = self.opacity(rgb, shaded=False)
+            g = np.minimum(1.0 / np.maximum(a, 1e-3), self.compensate)[..., None]
+            out[o] = rgb[o] + (out[o] - rgb[o]) * g[o]
         return np.clip(out, 0, 255)
 
 

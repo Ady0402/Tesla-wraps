@@ -26,14 +26,13 @@ def paint_sides() -> dict:
     silver_side(c)
 
     # silver -> black across the rear door
-    t = smoothstep(532, 678, X + (Y - 190) * 0.15)
+    t = seam_fade(c, 146.0)                       # starts on the front/rear door gap
     c.paint(t, c.gradient_field([(60, CARBON), (c.h, BLACK)], axis="y"))
 
     # stars all the same size: bright where the silver gives way to black,
     # dimming toward the tail
     def fade(x, y):
-        d = x + (y - 190) * 0.15
-        return float(np.interp(d, [536, 560, 700, 920], [0.0, 1.0, 0.85, 0.4]))
+        return float(np.interp(seam_darkness(x, y, 146.0), [0.0, 0.15, 0.7, 1.0], [0.0, 1.0, 0.85, 0.6]))
     star_field(c, 540, 990, 44, 290, 27, STAR_R_C, inner=0.2, colour=SILVER_HI, margin=1.5, opacity=fade)
 
     # number panel

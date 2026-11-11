@@ -27,11 +27,12 @@ NOSE = "#B2B7BC"        # silver as it reaches the nose (hood front edge / top o
 BUMPER_MID = "#42464B"
 BUMPER_LOW = "#131518"
 
-# the car renders an opaque wrap as matte vinyl (wrapkit/finish.py): silver and
-# black are made translucent so the car's own glossy paint shows through
-# (silver_alpha / black_alpha; text, numbers and teal stay opaque), and studio
-# reflections plus a little light along the body lines are painted in
-FINISH = metallic(1.0, crease_gain=55.0, silver_alpha=0.45, black_alpha=1.0)
+# the car renders a wrap as matte vinyl, so the metallic look is painted in
+# (wrapkit/finish.py): studio reflections that follow the surface plus light
+# along the body lines.  The wrap stays fully opaque - a translucent wrap
+# would let the car's own paint colour show through.
+FINISH = metallic(1.0, crease_gain=75.0, line_gain=85.0, floor=0.52, horizon=0.18, sky=0.80,
+                  shade_lo=0.50, shade_hi=1.20)
 
 # ---- fonts ----------------------------------------------------------------
 F_WORD = "Montserrat-ExtraBold.otf"       # PETRONAS-style wide bold caps
@@ -63,6 +64,7 @@ def shoulder_y(x):
     return 156.0 - 0.0625 * (np.asarray(x, dtype=np.float64) - 380.0)
 
 
+@__import__("functools").lru_cache(maxsize=8)
 def door_edge(panel: str, which: str):
     """Straight line x(y) fitted to a door's front or rear edge in side_L
     (the door gap), so graphics can run parallel to it."""
@@ -79,6 +81,22 @@ def door_edge(panel: str, which: str):
     keep = (ys > ys.min() + 10) & (ys < ys.max() - 10)
     a, b = np.polyfit(ys[keep], xs[keep], 1)
     return lambda y: a * np.asarray(y, dtype=np.float64) + b
+
+
+def seam_fade(c: Canvas, length: float, start: float = 3.0):
+    """0..1 field for a silver-to-black gradient that starts exactly on the gap
+    between the front and rear doors (the front door stays silver) and is fully
+    dark ``length`` px further back; parallel to the door gap."""
+    gap = door_edge("rear_door_L", "front")
+    X, Y = c.grid()
+    return smoothstep(0.0, length, X - gap(Y) - start)
+
+
+def seam_darkness(x, y, length: float, start: float = 3.0) -> float:
+    """seam_fade at one point (for star fields)."""
+    gap = door_edge("rear_door_L", "front")
+    t = float(np.clip((x - float(gap(y)) - start) / length, 0.0, 1.0))
+    return t * t * (3 - 2 * t)
 
 
 def belt_y(x):
@@ -147,16 +165,18 @@ def hood_base(c: Canvas):
     c.paint(np.ones_like(X), c.gradient_field([(8, SILVER_HI), (c.h * 0.5, SILVER), (c.h - 10, NOSE)], axis="y"))
 
 
-def hood_edge_bands(c: Canvas, inset, width, y0=14, y1=236):
+def hood_edge_bands(c: Canvas, inset, width, y0=2, y1=254):
     """Mask of two bands that hug the hood's side edges (the shut line next to
-    the fenders).  inset / width: number or callable of canvas Y."""
+    the fenders).  inset / width: number or callable of canvas Y.  A band that
+    should start right at the edge uses a small negative inset (it then runs
+    a few pixels past the edge, so no sliver of base colour is left there)."""
     m = c.view.mask()
     rows = [y for y in range(int(y0), int(y1) + 1) if m[y].sum() >= 20]
     left = np.array([np.nonzero(m[y])[0][0] for y in rows], dtype=np.float64)
     right = np.array([np.nonzero(m[y])[0][-1] + 1 for y in rows], dtype=np.float64)
-    ry = np.asarray(rows, dtype=np.float64)          # a smooth curve through the pixel staircase of the outline
-    left = np.polyval(np.polyfit(ry, left, 4), ry)
-    right = np.polyval(np.polyfit(ry, right, 4), ry)
+    # follow the real outline, only evening out its pixel staircase
+    left = ndi.uniform_filter1d(left, 7, mode="nearest")
+    right = ndi.uniform_filter1d(right, 7, mode="nearest")
     polys = []
     for side in (0, 1):
         outer, inner = [], []
@@ -176,8 +196,9 @@ def race_hood(c: Canvas, number: str):
     it along each hood edge, a black number plate up near the windscreen and a
     small teal wordmark ahead of it; clear of the Tesla badge at the nose."""
     hood_base(c)
-    c.paint(hood_edge_bands(c, 8, lambda y: float(np.interp(y, [14, 90, 236], [15, 15, 5]))), TEAL)
-    c.paint(hood_edge_bands(c, lambda y: float(np.interp(y, [14, 90, 228], [30, 30, 14])), 4.6, y1=228), TEAL)
+    # broad stripe starting right at the hood edge (no white border), pinstripe inside it
+    c.paint(hood_edge_bands(c, -4, lambda y: float(np.interp(y, [14, 90, 240], [19, 19, 10]))), TEAL)
+    c.paint(hood_edge_bands(c, lambda y: float(np.interp(y, [14, 90, 240], [21, 21, 10])), 4.6, y1=244), TEAL)
     cx = c.w / 2 + 1
     c.stamp(block_plate(number, 52), cx, 96)
     c.stamp(wordmark("PETRONAS", 13, TEAL_DEEP, font=F_WORD, tracking=1.4), cx, 146)
@@ -408,12 +429,30 @@ class Mirrored:
         return {self.left_name: left.out(), self.right_name: right.out()}
 
 
-def black_rails(teal_foot=False) -> Mirrored:
-    """Black A-pillars and roof rails (optionally a teal patch at the foot of
-    the A-pillar)."""
+def black_rails(pillar_line=True, teal_foot=False) -> Mirrored:
+    """Black A-pillars and roof rails.  pillar_line: a thin teal line up the
+    middle of the A-pillar, to go with the black mirror cap and its teal line
+    (it starts at the foot of the pillar, level with the mirror stripe, and
+    tapers out where the pillar meets the roof)."""
     r = Mirrored("rail_L", base=BLACK)
+    c = r.art
+    if pillar_line:
+        m = c.view.mask()
+        xs = np.arange(0, 252, 2, dtype=np.float64)
+        mid = []
+        for x in xs.astype(int):
+            ys = np.nonzero(m[:, x])[0]
+            mid.append((ys.min() + ys.max()) / 2.0 if len(ys) else np.nan)
+        mid = np.array(mid)
+        ok = ~np.isnan(mid)
+        mid = np.interp(xs, xs[ok], mid[ok])
+        mid = ndi.uniform_filter1d(mid, 7, mode="nearest")
+        half = np.interp(xs, [0, 200, 250], [2.2, 2.2, 0.0])          # ~2.5 cm wide, tapering at the roof
+        xs[0] = -3.0
+        c.polygon([(x, y - w) for x, y, w in zip(xs, mid, half)] +
+                  [(x, y + w) for x, y, w in zip(xs[::-1], mid[::-1], half[::-1])], TEAL)
     if teal_foot:
-        r.art.paint(r.art.mask_rect(-2, -2, 11, r.art.h + 2), TEAL)
+        c.paint(c.mask_rect(-2, -2, 11, c.h + 2), TEAL)
     return r
 
 

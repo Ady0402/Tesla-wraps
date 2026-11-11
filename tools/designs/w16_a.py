@@ -29,13 +29,12 @@ def paint_sides() -> dict:
 
     # silver front doors; the fade to black happens across the rear door,
     # leaning forward at the top like the engine-cover line of the F1 car
-    edge = 536 + (Y - 190) * 0.22
-    c.paint(smoothstep(-6, 120, X - edge), black)
+    c.paint(seam_fade(c, 126.0), black)          # starts on the front/rear door gap
 
     # star field over the rear half: every star the same size, the field fades in
     # with the black and dims a little toward the tail
     def fade(x, y):
-        return float(smoothstep(530, 590, x - (y - 190) * 0.22)) * (1.0 - 0.3 * float(smoothstep(770, 925, x)))
+        return min(1.0, seam_darkness(x, y, 126.0) * 1.4) * (1.0 - 0.3 * float(smoothstep(770, 925, x)))
     keep = keep_clear(c, rects=[(842, 220, 926, 241)])            # the teal flash on the bumper corner
     star_field(c, 532, 990, 46, 290, 36, STAR_R_A, keep=keep, inner=0.15, colour=WHITE, opacity=fade)
 
@@ -47,7 +46,7 @@ def paint_sides() -> dict:
     s.decal(block_plate(NUMBER, 50), 398, 168)
     s.decal(wordmark("PETRONAS", 25, BLACK), 414, 224)
     # on the flat of the fender, ahead of and above the side indicator
-    s.decal(text_decal("IWC", F_SERIF, 26, fill=BLACK, tracking=1.2), 204, 138)
+    s.decal(text_decal("IWC", F_SERIF, 26, fill=BLACK, tracking=1.2), 196, 140)
     return s.render()
 
 
@@ -55,7 +54,7 @@ def paint_hood():
     c = Canvas("hood", SILVER)
     hood_base(c)
     # broad teal bands on the hood's side edges, windscreen to nose
-    c.paint(hood_edge_bands(c, 9, lambda y: float(np.interp(y, [14, 150, 236], [13, 13, 9]))), TEAL)
+    c.paint(hood_edge_bands(c, -4, lambda y: float(np.interp(y, [14, 150, 240], [17, 17, 13]))), TEAL)
     # big race number, kept clear of the Tesla badge that sits near the nose
     c.stamp(block_digits(NUMBER, 60, BLACK, weight=0.25, shear=0.12), c.w / 2 + 1, 118)
     return c.out()

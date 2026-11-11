@@ -9,9 +9,9 @@ NUMBER = "63"
 
 
 def fender_marks(s: Mirrored, colour=BLACK):
-    """AMG and IWC on the flat of the front fender, clear of the side indicator."""
-    s.decal(wordmark("AMG", 15, colour, font=F_BLACK_IT, tracking=0.4, squeeze=1.25), 212, 138)
-    s.decal(text_decal("IWC", F_SERIF, 15, fill=colour, tracking=1.0), 158, 146)
+    """IWC on the flat of the front fender, clear of the side indicator.  No
+    car-brand lettering."""
+    s.decal(text_decal("IWC", F_SERIF, 16, fill=colour, tracking=1.0), 186, 144)
 
 
 def quarter_marks(s: Mirrored, roundel=True):

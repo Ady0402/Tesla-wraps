@@ -27,10 +27,11 @@ from wrapkit import save_sheet, save_wrap  # noqa: E402
 
 REPO = HERE.parent
 OUT = REPO / "modely" / "w16"
-DESIGNS = ["w16_a", "w16_b", "w16_c", "w16_d", "w16_b2", "w16_b3", "w16_b4"]
+DESIGNS = ["w16_a", "w16_b", "w16_c", "w16_d", "w16_b2", "w16_b3", "w16_b4", "w16_e1", "w16_e2", "w16_e3"]
 # preview pictures that put several designs side by side
 COMPARE = {"compare.jpg": ["w16_a", "w16_b", "w16_c", "w16_d"],
-           "compare_b_sides.jpg": ["w16_b", "w16_b2", "w16_b3", "w16_b4"]}
+           "compare_b_sides.jpg": ["w16_b", "w16_b2", "w16_b3", "w16_b4"],
+           "compare_e.jpg": ["w16_e1", "w16_e2", "w16_e3", "w16_a"]}
 BG = (228, 229, 233)
 
 

@@ -34,7 +34,7 @@ same pixels everywhere; the exact bytes depend on the library versions.
 | `wrapkit/preview.py` | flat sheet of every side, built from the saved file |
 | `render_visualizer.js` | uploads wraps to the Tesla Wrap Gallery visualizer and screenshots the 3D car |
 | `calibrate/` | how `wrapkit/data/` was produced |
-| `designs/w16_*.py` | the designs (`w16_a` .. `w16_d`, and `w16_b2` .. `w16_b4` which reuse B's front and rear with other sides via `w16_b_side.py`); `designs/w16_common.py` holds the palette, the body landmarks, the star field and other shared parts |
+| `designs/w16_*.py` | the designs (`w16_a` .. `w16_d`; `w16_b2` .. `w16_b4` and `w16_e1` .. `w16_e3` reuse B's front and rear with other sides via `w16_b_side.py` / `w16_e_side.py`); `designs/w16_common.py` holds the palette, the body landmarks (`shoulder_y`, `door_edge`, `seam_fade`), the star field, mirrors and rails |
 
 ## Canvases
 
@@ -77,26 +77,28 @@ than cut. Fades are done with brightness, never with size.
 
 The car and the app blend a wrap over the car's own paint by the wrap's alpha
 (`colour = mix(paint, wrap, a)`, roughness from ~0.1 to 0.9 and metallic from
-~0.7 to 0 as `a` goes to 1), so an **opaque** wrap is always lit as matte vinyl
-no matter what is painted on it. `wrapkit.finish.Metallic` therefore does two
-things:
+~0.7 to 0 as `a` goes to 1), so an opaque wrap is always lit as matte vinyl.
+Making the silver translucent does let the car's glossy paint through - but it
+also lets the car's paint *colour* through (a grey car turned the silver grey),
+so the wraps stay fully opaque and the metallic look is painted in instead.
 
-* `opacity()`: neutral silver / grey paint gets `silver_alpha` (0.45 in the
-  designs) so the car's glossy metallic paint shows through; text, numbers,
-  teal, white and black stay opaque (`black_alpha` = 1). The silver then takes
-  on the colour of the car's paint, so these wraps are meant for a silver /
-  grey paint choice in Paint Shop. `compose()` multiplies this into the
-  template alpha; `validate()` accepts translucency but never more opacity
-  than the template or fully transparent holes.
-* the shading: per texel from the surface normal (`wrapkit/data/modely_normals.png`)
-  it paints what a simple photo studio would mirror for a viewer beside the
-  car - dark floor and horizon band, a bright horizon line, sky and an overhead
-  light box - plus a little light where the body bends sharply (`crease_gain`),
-  so light and dark edges land on the body lines.
+`wrapkit.finish.Metallic` shades every texel from its surface normal
+(`wrapkit/data/modely_normals.png`) with what a simple photo studio would mirror
+for a viewer beside the car - floor, a dark band under the horizon, a bright
+horizon line, sky and an overhead light box - and adds light where the body
+bends sharply (`crease_gain`), so light and dark edges land on the body lines:
+the shoulder, the door crease, the wheel arches and the hood edges. The
+designs use `FINISH` in `designs/w16_common.py`; `floor` / `shade_lo` set how
+dark the lower panels get. (`silver_alpha`, `shade_alpha` and `compose(...,
+finish)` still support a translucent finish for cars painted silver.)
 
-The designs use `FINISH = metallic(1.0, crease_gain=55.0, silver_alpha=0.45,
-black_alpha=1.0)` in `designs/w16_common.py`; `silver_alpha=1.0` gives an
-opaque matte wrap again.
+## Resolution
+
+Tesla accepts 512..1024 px; 1024 x 1024 is the maximum, whatever the file size.
+Within that, `compose()` samples each texel 4 x 4 over its exact footprint on
+the canvas and applies a light unsharp mask. Every texel covers about 5-6 mm of
+the car on every panel. `compose.compose_hires()` can render 2048 x 2048 with
+real detail for testing whether a car accepts a larger file.
 
 ## Where the mapping comes from
 

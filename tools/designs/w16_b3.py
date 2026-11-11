@@ -35,7 +35,7 @@ def paint_sides() -> dict:
         return float(np.interp(x, [420, 560, 700, 920], [0.0, 0.9, 1.0, 0.65]))
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]
     sy = shoulder_y(xs)[None, :]
-    keep = keep_clear(c, rects=[(330, 196, 512, 236), (560, 252, 650, 272)] + QUARTER_KEEP["rects"],
+    keep = keep_clear(c, rects=[(330, 196, 512, 236)] + QUARTER_KEEP["rects"],
                       circles=QUARTER_KEEP["circles"])
     pod_mask = (ys > sy + 8) | (xs[None, :] > 745)
     keep &= pod_mask
@@ -49,7 +49,6 @@ def paint_sides() -> dict:
 
     s.decal(wordmark("PETRONAS", 24, WHITE, tracking=0.8, stroke=1.0, stroke_fill="#2E3237"), 421, 216)
     s.decal(text_decal("TeamViewer", F_SANS, 10.5, fill=WHITE), 421, 178)
-    s.decal(text_decal("Mercedes-Benz", "LiberationSerif-BoldItalic.ttf", 11.5, fill=WHITE), 604, 262)
     fender_marks(s)
     quarter_marks(s)
     return s.render()
