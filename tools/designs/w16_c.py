@@ -34,9 +34,9 @@ def paint_sides() -> dict:
     star_field(c, 540, 990, 44, 290, 27, STAR_R_C, inner=0.2, colour=SILVER_HI, margin=1.5, opacity=STAR_ALPHA_C,
                where=in_dark(146.0))
 
-    # number panel
+    # number area: no white panel behind the lettering (owner's request) - the
+    # number and partner names sit straight on the silver, over a teal base line
     x0, y0, x1, y1 = PANEL
-    c.paint(c.mask_rect(x0, y0, x1, y1, radius=3), WHITE)
     c.paint(c.mask_rect(x0, y1 - 15, x1, y1, radius=0), TEAL)
     c.paint(c.mask_rect(x0, y1, x1, y1 + 3.5, radius=0), BLACK)
     # teal-over-black flash running forward from the panel across the fender

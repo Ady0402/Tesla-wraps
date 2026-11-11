@@ -45,11 +45,8 @@ def paint_sides() -> dict:
 
 
 def paint_rails() -> dict:
-    r = black_rails(pillar_line=False)
-    c = r.art
-    xs = np.linspace(14, c.w - 14, 60)
-    c.line([(x, float(rail_mid(x))) for x in xs], 2.6, TEAL)
-    return r.render()
+    # plain black: no teal on the A-pillars or roof rails (owner's request)
+    return black_rails().render()
 
 
 def paint_mirrors() -> dict:

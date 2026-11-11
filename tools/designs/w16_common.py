@@ -34,7 +34,7 @@ BUMPER_LOW = "#131518"
 # tone with the broad shape of the body (wrapkit/finish.py, Tonal), with no
 # lines on creases.  The wrap stays fully opaque - a translucent wrap would
 # let the car's own paint colour show through.
-FINISH = tonal(1.0)
+FINISH = tonal(1.0, lo=0.70, hi=1.12, soft=30.0)
 
 # ---- fonts ----------------------------------------------------------------
 F_WORD = "Montserrat-ExtraBold.otf"       # PETRONAS-style wide bold caps
@@ -177,13 +177,24 @@ def rail_x(side_x):
 # ---- base paint -------------------------------------------------------------
 # layered silver on the side canvases, by height (canvas Y): bright along the
 # top of the body, a little deeper over the door faces, darkest at the sills
-SIDE_TONES = [(96, "#E3E6E9"), (150, "#D1D5D9"), (180, "#C2C7CC"), (218, "#AFB5BB"), (252, "#9DA3AA"), (288, "#8E949B")]
+SIDE_TONES = [(96, "#EEF0F2"), (140, "#DDE1E4"), (175, "#C4C9CE"), (215, "#A7ADB3"), (250, "#8E949B"), (288, "#7B8188")]
+
+
+def brushed(c: Canvas, amount: float = 0.035, along: str = "x", seed: int = 7):
+    """(H, W, 1) multiplier: fine streaks running along the car, like brushed
+    aluminium - a faint grain that makes flat silver read as metal."""
+    rng = np.random.default_rng(seed)
+    n = rng.standard_normal((c.H, c.W)).astype(np.float32)
+    sig = (0.6, 40.0) if along == "x" else (40.0, 0.6)
+    n = ndi.gaussian_filter(n, sig)
+    n /= max(float(n.std()), 1e-6)
+    return (1.0 + amount * np.clip(n, -2.5, 2.5))[..., None]
 
 
 def silver_gradient(c: Canvas):
-    """Light-to-dark layers of silver down the body side - the metal look comes
-    from these tones rather than from painted reflections."""
-    return c.gradient_field(SIDE_TONES, axis="y")
+    """Light-to-dark layers of silver down the body side, with a brushed grain -
+    the metal look comes from these tones rather than from painted reflections."""
+    return c.gradient_field(SIDE_TONES, axis="y") * brushed(c)
 
 
 def bumper_gradient(c: Canvas, y0=0.0):
@@ -207,9 +218,10 @@ def hood_base(c: Canvas):
     """Silver hood in layers: bright at the windscreen and along the crown,
     deeper toward the nose and toward the side edges."""
     X, Y = c.grid()
-    c.paint(np.ones_like(X), c.gradient_field([(8, "#E2E5E8"), (c.h * 0.5, SILVER), (c.h - 10, NOSE)], axis="y"))
+    field = c.gradient_field([(8, "#EDEFF1"), (c.h * 0.5, "#C9CDD1"), (c.h - 10, "#A9AEB3")], axis="y")
+    c.paint(np.ones_like(X), field * brushed(c, along="y", seed=11))
     side = np.clip(np.abs(X - c.w / 2) / (c.w / 2), 0, 1)
-    c.paint(0.55 * smoothstep(0.35, 1.0, side), "#A3A9AF")
+    c.paint(0.65 * smoothstep(0.3, 1.0, side), "#8F959C")
 
 
 def hood_edge_bands(c: Canvas, inset, width, y0=2, y1=254):
@@ -240,13 +252,13 @@ def hood_edge_bands(c: Canvas, inset, width, y0=2, y1=254):
 
 
 def race_hood(c: Canvas, number: str):
-    """Hood of the preferred front: a broad teal stripe with a pinstripe inside
-    it along each hood edge, a black number plate up near the windscreen and a
+    """Hood of the preferred front: one broad teal stripe along the hood edges
+    and round the nose, a black number plate up near the windscreen and a
     small teal wordmark ahead of it; clear of the Tesla badge at the nose."""
     hood_base(c)
-    # broad stripe starting right at the hood edge (no white border), pinstripe inside it
-    c.paint(hood_edge_bands(c, -4, lambda y: float(np.interp(y, [14, 90, 240], [19, 19, 10]))), TEAL)
-    c.paint(hood_edge_bands(c, lambda y: float(np.interp(y, [14, 90, 240], [21, 21, 10])), 4.6, y1=244), TEAL)
+    # one broad stripe starting right at the hood edge (no white border); owner: a single
+    # stripe, a little wider than the old broad one
+    c.paint(hood_edge_bands(c, -4, lambda y: float(np.interp(y, [14, 90, 240], [26, 26, 14]))), TEAL)
     cx = c.w / 2 + 1
     c.stamp(block_plate(number, 52), cx, 96)
     c.stamp(wordmark("PETRONAS", 13, TEAL_DEEP, font=F_WORD, tracking=1.4), cx, 146)
@@ -543,7 +555,7 @@ class Mirrored:
         return {self.left_name: left.out(), self.right_name: right.out()}
 
 
-def black_rails(pillar_line=True, teal_foot=False) -> Mirrored:
+def black_rails(pillar_line=False, teal_foot=False) -> Mirrored:
     """Black A-pillars and roof rails.  pillar_line: a thin teal line up the
     middle of the A-pillar, to go with the black mirror cap and its teal line
     (it starts at the foot of the pillar, level with the mirror stripe, and
