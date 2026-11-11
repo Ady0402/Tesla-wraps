@@ -24,7 +24,7 @@ def paint_sides() -> dict:
     X, Y = c.grid()
     silver_side(c)
     black = c.gradient_field([(60, CARBON), (c.h, BLACK)], axis="y")
-    gap = door_edge("rear_door_L", "front")              # the front/rear door gap
+    gap = door_curve("rear_door_L", "front")              # the front/rear door gap
     c.paint(smoothstep(-1.0, 1.0, X - gap(Y) + 2), black)
 
     # teal band on the rear door, parallel to the gap

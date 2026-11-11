@@ -63,7 +63,9 @@ def paint_hood():
     hood_base(silver)
     # black at the windscreen (it meets the black A-pillars), silver from mid-hood to the nose
     c.paint(smoothstep(46, 122, Y), silver.px)
-    star_field(c, 0, c.w, 10, 84, 29, STAR_R_D, inner=0.15, colour=STAR, opacity=STAR_ALPHA_D)   # on the black part only
+    # on the black part only; the lattice is centred on the hood so the field is symmetric
+    x0 = c.w / 2 - 29 * np.ceil(c.w / 2 / 29)
+    star_field(c, x0, c.w + 29, 10, 84, 29, STAR_R_D, inner=0.15, colour=STAR, opacity=STAR_ALPHA_D)
     c.paint(hood_edge_bands(c, -4, lambda y: float(np.interp(y, [14, 70, 240], [11, 11, 6]))), TEAL)
     # number kept clear of the Tesla badge that sits near the nose
     c.stamp(block_digits(NUMBER, 30, BLACK, weight=0.23, shear=0.1), c.w / 2 + 1, 164)

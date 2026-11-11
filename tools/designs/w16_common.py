@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
-from wrapkit import (Canvas, block_digits, box_decal, facing_min, layer, mix, normal_image, panel_image, rgb, tonal,
+from wrapkit import (SS, Canvas, block_digits, box_decal, facing_min, layer, mix, normal_image, panel_image, rgb, tonal,
                      smoothstep, star3, text_decal)
 
 # ---- palette --------------------------------------------------------------
@@ -85,16 +85,44 @@ def door_edge(panel: str, which: str):
     return lambda y: a * np.asarray(y, dtype=np.float64) + b
 
 
+@__import__("functools").lru_cache(maxsize=None)
+def door_curve(panel: str, which: str):
+    """The real (curved) front or rear edge of a door in side_L as x(y): the
+    panel's outline row by row, lightly smoothed, continued straight (as
+    door_edge) above and below the door - for graphics that hug the gap."""
+    from wrapkit import panel_image
+    from wrapkit.template import PANELS
+    p = panel_image("side_L") == PANELS[panel]
+    ys, xs = [], []
+    for y in range(p.shape[0]):
+        row = np.nonzero(p[y])[0]
+        if len(row) > 40:
+            ys.append(y)
+            xs.append(row.min() if which == "front" else row.max() + 1.0)
+    ys, xs = np.array(ys, float), np.array(xs, float)
+    line = door_edge(panel, which)
+    near = np.abs(xs - line(ys)) < 20                      # rows on the gap itself (not the window frame)
+    ys, xs = ys[near], xs[near]
+    xs = ndi.uniform_filter1d(ndi.median_filter(xs, 5, mode="nearest"), 7, mode="nearest")
+
+    def f(y):
+        y = np.asarray(y, dtype=np.float64)
+        inside = (y >= ys[0]) & (y <= ys[-1])
+        return np.where(inside, np.interp(y, ys, xs), line(y) - line(np.clip(y, ys[0], ys[-1])) +
+                        np.interp(np.clip(y, ys[0], ys[-1]), ys, xs))
+    return f
+
+
 def seam_fade(c: Canvas, length: float, start: float = 3.0):
     """0..1 field for a silver-to-black gradient that starts exactly on the gap
     between the front and rear doors (the front door stays silver) and is fully
     dark ``length`` px further back; parallel to the door gap."""
-    gap = door_edge("rear_door_L", "front")
+    gap = door_curve("rear_door_L", "front")
     X, Y = c.grid()
     return smoothstep(0.0, length, X - gap(Y) - start)
 
 
-STAR_DARK = 0.4      # stars start where the fade to black is this far along (they need dark paint to show)
+STAR_DARK = 0.6      # stars start where the fade to black is this far along: on lighter grey they read as faint "ghost" stars
 
 
 def in_dark(length: float, start: float = 3.0):
@@ -104,7 +132,7 @@ def in_dark(length: float, start: float = 3.0):
 
 def seam_darkness(x, y, length: float, start: float = 3.0) -> float:
     """seam_fade at one point (for star fields)."""
-    gap = door_edge("rear_door_L", "front")
+    gap = door_curve("rear_door_L", "front")
     t = float(np.clip((x - float(gap(y)) - start) / length, 0.0, 1.0))
     return t * t * (3 - 2 * t)
 
@@ -185,29 +213,30 @@ def hood_base(c: Canvas):
 
 
 def hood_edge_bands(c: Canvas, inset, width, y0=2, y1=254):
-    """Mask of two bands that hug the hood's side edges (the shut line next to
-    the fenders).  inset / width: number or callable of canvas Y.  A band that
-    should start right at the edge uses a small negative inset (it then runs
-    a few pixels past the edge, so no sliver of base colour is left there)."""
+    """Coverage (0..1, supersampled) of a band that hugs the hood's outline -
+    both side edges and the front edge round the nose, as one continuous U -
+    at a constant distance from it.  inset / width: number or callable of
+    canvas Y.  A band that should start right at the edge uses a small
+    negative inset (it then runs past the edge, so no sliver of base colour is
+    left there).  The edge at the windscreen does not count as outline, and
+    rows outside y0..y1 are left out."""
     m = c.view.mask()
-    rows = [y for y in range(int(y0), int(y1) + 1) if m[y].sum() >= 20]
-    left = np.array([np.nonzero(m[y])[0][0] for y in rows], dtype=np.float64)
-    right = np.array([np.nonzero(m[y])[0][-1] + 1 for y in rows], dtype=np.float64)
-    # follow the real outline, only evening out its pixel staircase
-    left = ndi.uniform_filter1d(left, 7, mode="nearest")
-    right = ndi.uniform_filter1d(right, 7, mode="nearest")
-    polys = []
-    for side in (0, 1):
-        outer, inner = [], []
-        for i, y in enumerate(rows):
-            a = inset(y) if callable(inset) else inset
-            w = width(y) if callable(width) else width
-            if side == 0:
-                outer.append((left[i] + a, y)); inner.append((left[i] + a + w, y))
-            else:
-                outer.append((right[i] - a, y)); inner.append((right[i] - a - w, y))
-        polys.append(outer + inner[::-1])
-    return c.mask_polygons(polys)
+    h, w = m.shape
+    has = m.any(axis=0)
+    top = np.where(has, m.argmax(axis=0), h)               # first hood row of every column (the cowl)
+    rows = np.arange(h)[:, None]
+    outside = (~m & (rows > top[None, :])) | ~has[None, :]  # beside and in front of the hood, not above it
+    d = ndi.distance_transform_edt(~outside) - 0.5          # canvas px from the outline
+    d = ndi.gaussian_filter(d, 0.8)                         # round off the pixel staircase
+    X, Y = c.grid()
+    D = ndi.map_coordinates(d, [Y - 0.5, X - 0.5], order=1, mode="nearest")
+    ys = Y[:, 0]
+    a = np.array([inset(y) if callable(inset) else inset for y in ys], dtype=np.float32)[:, None]
+    wd = np.array([width(y) if callable(width) else width for y in ys], dtype=np.float32)[:, None]
+    px = 1.0 / SS                                           # one sub-pixel, for anti-aliasing
+    cov = np.clip((D - a) / px + 0.5, 0, 1) * np.clip((a + wd - D) / px + 0.5, 0, 1)
+    cov *= ((Y >= y0) & (Y <= y1)).astype(np.float32)
+    return cov
 
 
 def race_hood(c: Canvas, number: str):
@@ -242,12 +271,14 @@ def rear_marks(c: Canvas):
 REAR_KEEP = dict(rects=[(100, 182, 304, 199)], circles=[REAR_BADGE])   # bumper line, Tesla badge
 
 
-def paint_deck(pitch, radius, colour=STAR, opacity=1.0, inner=0.17):
+def paint_deck(pitch=None, radius=None, colour=None, opacity=None, inner=None):
     """The liftgate from above (frame of the rear glass, top of the spoiler):
-    black, filled with the same stars as the rest of the tail."""
-    c = Canvas("deck", BLACK)
-    star_field(c, 0, c.w, 4, c.h, pitch, radius, colour=colour, opacity=opacity, inner=inner, margin=1.5)
-    return c.out()
+    plain black.  These faces look at the sky, so no direction on them reads
+    as 'up' from behind the car - a star there looks turned next to the
+    upright stars on the tail-lamp band just below - and they stay clear.
+    (The arguments are accepted and ignored, for the designs that pass their
+    star settings.)"""
+    return Canvas("deck", BLACK).out()
 
 
 # ---- decals -----------------------------------------------------------------
@@ -344,7 +375,7 @@ def on_body(view: str, shape, cx, cy, iterations=3):
 
 
 def star_field(c: Canvas, x0, x1, y0, y1, pitch, radius, keep=None, inner=0.17,
-               margin=2.0, min_tilt=0.55, colour=STAR, opacity=1.0, where=None, view=None):
+               margin=2.0, min_tilt=None, colour=STAR, opacity=1.0, where=None, view=None):
     """Three-pointed stars on a triangular lattice, laid out in this canvas but
     shaped on the car (on_body): every star has the same size, one arm pointing
     straight up, and the same colour and opacity everywhere.  Only whole stars
@@ -356,6 +387,16 @@ def star_field(c: Canvas, x0, x1, y0, y1, pitch, radius, keep=None, inner=0.17,
     if callable(opacity):
         raise TypeError("star_field: opacity is one number for every star; use where= to shape the field")
     view = view or c.view.name
+    if min_tilt is None:
+        # on the flanks, keep off the sharply sloped shoulder and fender nose: a star there
+        # looks turned from most viewpoints, next to the upright ones on the doors
+        min_tilt = 0.65 if view.startswith("side") else 0.55
+    if view == "side_L":                     # never under the side indicator / camera or a door handle
+        x0r, y0r, x1r, y1r = REPEATER
+        rects = [(x0r - 5, y0r - 5, x1r + 5, y1r + 5)]
+        rects += [(hx0 - 6, hy - 9, hx1 + 6, hy + 9) for hx0, hx1, hy in (HANDLE_F, HANDLE_R)]
+        rep = keep_clear(c, rects=rects)
+        keep = rep if keep is None else (keep & rep)
     p = panel_image(view)
     if view not in _EDGE:
         _EDGE[view] = _edge_distance(view)
@@ -398,7 +439,9 @@ def star_field(c: Canvas, x0, x1, y0, y1, pitch, radius, keep=None, inner=0.17,
         if ok:
             polys.append(pts)
     if polys:
-        c.paint(c.mask_polygons(polys), colour, opacity)
+        # unlit: the finish's soft light and shade does not dim or brighten a
+        # star, so every star of a design has exactly the same brightness
+        c.paint(c.mask_polygons(polys), colour, opacity, lit=False)
     return len(polys)
 
 
@@ -534,10 +577,17 @@ def striped_mirrors(y0=1.312, y1=1.338) -> dict:
     out = {}
     for name in ("mirror_L", "mirror_R"):
         c = Canvas(name, BLACK)
-        h = np.repeat(np.repeat(c.view.height(), 4, 0), 4, 1)
-        h = ndi.grey_dilation(h, size=(9, 9))                 # carry the band into the hidden rim
-        band = ((h >= y0) & (h <= y1)).astype(np.float32)
-        band = ndi.uniform_filter(band, 3)                     # soften the staircase
-        c.paint(band, TEAL)
+        h0 = c.view.height().astype(np.float64)
+        ok = h0 > 0
+        _, (iy, ix) = ndi.distance_transform_edt(~ok, return_indices=True)
+        h0 = h0[iy, ix]                                        # carry the heights into the hidden rim
+        h0 = ndi.gaussian_filter(h0, 0.7)                      # smooth out the 1 mm steps of the height map
+        X, Y = c.grid()
+        H = ndi.map_coordinates(h0, [Y - 0.5, X - 0.5], order=1, mode="nearest")
+        gy, gx = np.gradient(H)
+        g = np.maximum(np.hypot(gx, gy), 1e-5)                 # metres per sub-pixel
+        # anti-aliased: coverage of each sub-pixel by the slab y0 <= height <= y1
+        band = np.clip((H - y0) / g + 0.5, 0, 1) * np.clip((y1 - H) / g + 0.5, 0, 1)
+        c.paint(band.astype(np.float32), TEAL)
         out[name] = c.out()
     return out

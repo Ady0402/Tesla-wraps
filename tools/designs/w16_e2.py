@@ -14,8 +14,8 @@ TITLE = "E2 - Fade + Shoulder"
 
 def paint_sides() -> dict:
     s, c, _ = fade_side(length=120.0, extra_keep=[])
-    f = door_edge("front_door_L", "front")
-    r = door_edge("front_door_L", "rear")
+    f = door_curve("front_door_L", "front")
+    r = door_curve("front_door_L", "rear")
 
     def stripe(off, thick, colour):
         ya = float(shoulder_y(300)) + off

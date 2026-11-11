@@ -23,12 +23,12 @@ def paint_sides() -> dict:
     X, Y = c.grid()
     silver_side(c)
     black = c.gradient_field([(60, CARBON), (c.h, BLACK)], axis="y")
-    f = door_edge("front_door_L", "front")
+    f = door_curve("front_door_L", "front")
     front = f(Y) + 12                                    # parallel to the front door's leading edge
     pod = smoothstep(-1.5, 1.5, X - front) * smoothstep(-1.5, 1.5, Y - shoulder_y(X))
     c.paint(pod, black)
     # behind the rear door the whole quarter panel is black (split on the door gap)
-    r = door_edge("rear_door_L", "rear")
+    r = door_curve("rear_door_L", "rear")
     c.paint(smoothstep(-1.0, 1.0, X - r(Y) + 3), black)
 
     xs, ys = np.arange(c.w), np.arange(c.h)[:, None]

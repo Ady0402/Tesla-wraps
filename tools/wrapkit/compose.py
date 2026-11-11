@@ -8,7 +8,8 @@ from scipy.spatial import cKDTree
 from .carmap import STRIP_IDS, canvas_sizes, on_car, texel_coords, viewmap
 from .template import PANELS, SIZE, nearest_panel, panel_labels, template_alpha, views
 
-BLEED = 6  # px of colour bleed painted outside each island (under alpha 0)
+BLEED = 16  # px of colour bleed painted outside each island (under alpha 0): the car samples
+            # past the edge when it draws the wrap small, and black there shows as dotted seams
 SAMPLES = 4      # each texel averages SAMPLES x SAMPLES points spread over its footprint on the canvas
 SHARPEN = 0.35   # unsharp-mask amount on the finished texture: offsets the blur the car's texture
                  # filtering adds, so lettering and edges stay crisp at 1024 x 1024
@@ -40,6 +41,7 @@ def compose(painted: dict, finish=None, sharpen: float = SHARPEN) -> np.ndarray:
     """
     vs = views()
     rgb = np.zeros((SIZE, SIZE, 3), dtype=np.float32)
+    lit = np.ones((SIZE, SIZE), dtype=np.float32)       # 1 = the finish shades this texel
     done = np.zeros((SIZE, SIZE), dtype=bool)
     vm = viewmap()
     for name, (ys, xs, X, Y) in texel_coords(SAMPLES).items():
@@ -50,28 +52,33 @@ def compose(painted: dict, finish=None, sharpen: float = SHARPEN) -> np.ndarray:
         # sample the full-resolution (supersampled) canvas directly: SAMPLES x SAMPLES
         # points per texel = an exact box filter over the texel's footprint
         cy, cx = Y * r - 0.5, X * r - 0.5
-        acc = np.zeros((len(ys), 3), dtype=np.float32)
-        for c in range(3):
+        acc = np.zeros((len(ys), arr.shape[2]), dtype=np.float32)
+        for c in range(arr.shape[2]):
             acc[:, c] = ndi.map_coordinates(arr[..., c], [cy, cx], order=1, mode="nearest").mean(axis=1)
-        rgb[ys, xs] = acc
+        rgb[ys, xs] = acc[:, :3]
+        if arr.shape[2] > 3:
+            lit[ys, xs] = acc[:, 3]
         done[ys, xs] = True
     for name, vid in STRIP_IDS.items():
         v = vs[name]
         arr = np.asarray(painted[name], dtype=np.float32)
         if arr.shape[:2] != (v.h, v.w):      # supersampled: box-filter down
             r = arr.shape[1] // v.w
-            arr = arr.reshape(v.h, r, v.w, r, 3).mean(axis=(1, 3))
+            arr = arr.reshape(v.h, r, v.w, r, arr.shape[2]).mean(axis=(1, 3))
         rot = v.to_texture(arr[..., :3])
         rh, rw = v.rotated_shape()
         m = vm[v.oy:v.oy + rh, v.ox:v.ox + rw] == vid
         rgb[v.oy:v.oy + rh, v.ox:v.ox + rw][m] = rot[m]
+        if arr.shape[2] > 3:
+            lit[v.oy:v.oy + rh, v.ox:v.ox + rw][m] = v.to_texture(np.repeat(arr[..., 3:4], 3, axis=2))[..., 0][m]
         done[v.oy:v.oy + rh, v.ox:v.ox + rw] |= m
     assert (done == on_car()).all()
     skin = np.ones((SIZE, SIZE), dtype=np.float32)
     if finish is not None:
         if hasattr(finish, "opacity"):
             skin = np.where(done, finish.opacity(rgb), 1.0).astype(np.float32)
-        rgb = np.asarray(finish(rgb), dtype=np.float32)
+        shaded = np.asarray(finish(rgb), dtype=np.float32)
+        rgb = rgb + (shaded - rgb) * np.clip(lit, 0, 1)[..., None]   # paint marked unlit keeps its colour
     # hidden margin + bleed: nearest visible colour of the same panel
     alpha = template_alpha()
     near = nearest_panel()
@@ -133,38 +140,46 @@ def compose_hires(painted: dict, finish=None, scale: int = 2, sharpen: float = S
     vs = views()
     vm = viewmap()
     rgb = np.zeros((N, N, 3), dtype=np.float32)
+    lit = np.ones((N, N), dtype=np.float32)
     done = np.zeros((N, N), dtype=bool)
     for name, (ys, xs, X, Y) in texel_coords(sub).items():
         arr = np.asarray(painted[name], dtype=np.float32)
+        C = arr.shape[2]
         w, h = canvas_sizes()[name]
         r = arr.shape[1] // w
         cy, cx = Y * r - 0.5, X * r - 0.5             # (n, sub*sub), row-major over (oy, ox)
         vals = np.stack([ndi.map_coordinates(arr[..., c], [cy, cx], order=1, mode="nearest")
-                         for c in range(3)], -1).reshape(len(ys), sub, sub, 3)
+                         for c in range(C)], -1).reshape(len(ys), sub, sub, C)
         k = sub // scale
         for dy in range(scale):
             for dx in range(scale):
                 block = vals[:, dy * k:(dy + 1) * k, dx * k:(dx + 1) * k].mean(axis=(1, 2))
-                rgb[ys * scale + dy, xs * scale + dx] = block
+                rgb[ys * scale + dy, xs * scale + dx] = block[:, :3]
+                if C > 3:
+                    lit[ys * scale + dy, xs * scale + dx] = block[:, 3]
                 done[ys * scale + dy, xs * scale + dx] = True
     for name, vid in STRIP_IDS.items():
         v = vs[name]
         arr = np.asarray(painted[name], dtype=np.float32)
+        C = arr.shape[2]
         r = arr.shape[1] // v.w
         f = max(1, r // scale)
-        arr = arr.reshape(v.h * scale, f, v.w * scale, f, 3).mean(axis=(1, 3)) if r > scale else \
+        arr = arr.reshape(v.h * scale, f, v.w * scale, f, C).mean(axis=(1, 3)) if r > scale else \
             np.repeat(np.repeat(arr, scale // r, 0), scale // r, 1)
         rot = v.to_texture(arr[..., :3])
         rh, rw = v.rotated_shape()
         m = np.kron(vm[v.oy:v.oy + rh, v.ox:v.ox + rw] == vid, np.ones((scale, scale), bool))
         sl = (slice(v.oy * scale, (v.oy + rh) * scale), slice(v.ox * scale, (v.ox + rw) * scale))
         rgb[sl][m] = rot[m]
+        if C > 3:
+            lit[sl][m] = v.to_texture(np.repeat(arr[..., 3:4], 3, axis=2))[..., 0][m]
         done[sl] |= m
     if finish is not None and hasattr(finish, "shading") and finish.strength > 0:
         shade, add = finish.shading()
         shade2 = ndi.zoom(shade, scale, order=1)
         add2 = ndi.zoom(add, scale, order=1)
-        rgb = np.where(done[..., None], rgb * shade2[..., None] + add2[..., None], rgb)
+        shaded = rgb * shade2[..., None] + add2[..., None]
+        rgb = np.where(done[..., None], rgb + (shaded - rgb) * np.clip(lit, 0, 1)[..., None], rgb)
         rgb = np.clip(rgb, 0, 255)
     from PIL import Image
     alpha = np.asarray(Image.fromarray(template_alpha()).resize((N, N), Image.BILINEAR))

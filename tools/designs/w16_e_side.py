@@ -23,7 +23,7 @@ def fade_side(length=180.0, extra_keep=(), pitch=25, stars=True) -> tuple:
     black = c.gradient_field([(60, CARBON), (c.h, BLACK)], axis="y")
     t = seam_fade(c, length)
     c.paint(t, black)
-    gap = door_edge("rear_door_L", "front")
+    gap = door_curve("rear_door_L", "front")
 
     fade = in_dark(length)
     if stars:

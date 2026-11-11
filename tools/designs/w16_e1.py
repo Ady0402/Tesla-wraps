@@ -15,7 +15,7 @@ TITLE = "E1 - Seam Fade"
 def paint_sides() -> dict:
     s, c, _ = fade_side(length=190.0, extra_keep=[])
     # teal band along the bottom edge of the front door, ending at the door gap
-    gap = door_edge("front_door_L", "rear")
+    gap = door_curve("front_door_L", "rear")
     x1a, x1b = float(gap(SILL_Y - 17)) - 6, float(gap(SILL_Y - 4)) - 6
     c.polygon([(302, SILL_Y - 17), (x1a, SILL_Y - 17), (x1b, SILL_Y - 4), (302, SILL_Y - 4)], TEAL)
     s.decal(block_plate("63", 50), 398, 168)

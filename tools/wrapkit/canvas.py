@@ -98,6 +98,7 @@ class Canvas:
         self.W, self.H = self.w * SS, self.h * SS
         self.px = np.empty((self.H, self.W, 3), dtype=np.float32)
         self.px[:] = rgb(base)
+        self.lit = None          # (H, W) 1 = the finish shades this pixel; None = everywhere
 
     # ---- coordinate grids -------------------------------------------------
     def grid(self):
@@ -152,12 +153,22 @@ class Canvas:
     # ---- painting ---------------------------------------------------------
     def fill(self, color):
         self.px[:] = rgb(color)
+        self.lit = None
 
-    def paint(self, mask, color, opacity: float = 1.0):
-        """Blend a colour (or an (H, W, 3) colour field) through a 0..1 mask."""
+    def paint(self, mask, color, opacity: float = 1.0, lit: bool = True):
+        """Blend a colour (or an (H, W, 3) colour field) through a 0..1 mask.
+        lit=False marks the paint as exempt from the finish's light and shade
+        (compose keeps its colour exactly), e.g. stars that must look the same
+        brightness everywhere on the body."""
         a = (np.asarray(mask, dtype=np.float32) * opacity)[..., None]
         col = color if isinstance(color, np.ndarray) and color.ndim == 3 else rgb(color)
         self.px += (col - self.px) * a
+        if not lit:
+            if self.lit is None:
+                self.lit = np.ones((self.H, self.W), dtype=np.float32)
+            self.lit -= self.lit * a[..., 0]
+        elif self.lit is not None:
+            self.lit += (1.0 - self.lit) * a[..., 0]
 
     def polygon(self, pts, color, opacity: float = 1.0):
         self.paint(self.mask_polygon(pts), color, opacity)
@@ -201,6 +212,9 @@ class Canvas:
         a = src[..., 3:4] / 255.0 * opacity
         dst = self.px[ty0:ty1, tx0:tx1]
         dst += (src[..., :3] - dst) * a
+        if self.lit is not None:
+            dl = self.lit[ty0:ty1, tx0:tx1]
+            dl += (1.0 - dl) * a[..., 0]
 
     # ---- output -----------------------------------------------------------
     def result(self) -> np.ndarray:
@@ -208,8 +222,11 @@ class Canvas:
         return self.px.reshape(self.h, SS, self.w, SS, 3).mean(axis=(1, 3))
 
     def out(self) -> np.ndarray:
-        """The supersampled image, as compose() wants it."""
-        return self.px
+        """The supersampled image, as compose() wants it: RGB, plus a fourth
+        channel (1 = shaded by the finish) when some paint is exempt."""
+        if self.lit is None:
+            return self.px
+        return np.concatenate([self.px, self.lit[..., None]], axis=-1)
 
     def mirrored(self) -> "Canvas":
         """Left-right mirror image as a canvas for the opposite flank."""
@@ -220,12 +237,18 @@ class Canvas:
         c.w, c.h = c.view.w, c.view.h
         c.W, c.H = c.w * SS, c.h * SS
         src = self.px[:, ::-1]
+        c.lit = None
         if (c.H, c.W) == src.shape[:2]:
             c.px = src.copy()
+            if self.lit is not None:
+                c.lit = self.lit[:, ::-1].copy()
         else:  # mirror caps / rail strips differ by a pixel or two between the two sides
             c.px = np.asarray(
                 Image.fromarray(np.clip(src, 0, 255).astype(np.uint8)).resize((c.W, c.H), Image.BILINEAR),
                 dtype=np.float32)
+            if self.lit is not None:
+                c.lit = np.asarray(Image.fromarray(self.lit[:, ::-1].astype(np.float32), "F").resize(
+                    (c.W, c.H), Image.BILINEAR), dtype=np.float32)
         return c
 
 

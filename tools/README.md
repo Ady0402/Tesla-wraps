@@ -28,13 +28,13 @@ same pixels everywhere; the exact bytes depend on the library versions.
 | `wrapkit/template.py` | finds the 16 paintable islands of `modely/template.png`; lists the canvases |
 | `wrapkit/carmap.py` | where every texel of the texture sits on the car (reads `wrapkit/data/`) |
 | `wrapkit/canvas.py` | 4x supersampled drawing surface, text and blocky race-number decals, splines, three-pointed stars |
-| `wrapkit/compose.py` | canvases -> texture (`compose`, optionally with a `finish`) and texture -> canvases (`decompose`) |
+| `wrapkit/compose.py` | canvases -> texture (`compose`, optionally with a `finish`; a canvas's optional 4th channel says which paint the finish may shade) and texture -> canvases (`decompose`) |
 | `wrapkit/finish.py` | `tonal()`: a soft change of tone with the broad shape of the body (used); `metallic()`: studio reflections and light on the body lines (kept, not used) |
 | `wrapkit/export.py` | saves a PNG that satisfies Tesla's rules (`save_wrap`) and checks one (`validate`: container, bit depth, size, name, alpha against the template) |
 | `wrapkit/preview.py` | flat sheet of every side, built from the saved file |
 | `render_visualizer.js` | uploads wraps to the Tesla Wrap Gallery visualizer and screenshots the 3D car |
 | `calibrate/` | how `wrapkit/data/` was produced |
-| `designs/w16_*.py` | the designs (`w16_a` .. `w16_d`; `w16_b2` .. `w16_b4` and `w16_e1` .. `w16_e3` reuse B's front and rear with other sides via `w16_b_side.py` / `w16_e_side.py`); `designs/w16_common.py` holds the palette, the body landmarks (`shoulder_y`, `door_edge`, `seam_fade`), the star field, mirrors and rails |
+| `designs/w16_*.py` | the designs (`w16_a` .. `w16_d`; `w16_b2` .. `w16_b4` and `w16_e1` .. `w16_e3` reuse B's front and rear with other sides via `w16_b_side.py` / `w16_e_side.py`); `designs/w16_common.py` holds the palette, the body landmarks (`shoulder_y`, `door_edge`, `door_curve`, `seam_fade`), the star field, mirrors and rails |
 
 ## Canvases
 
@@ -60,7 +60,8 @@ falling to 96 toward the tail; sill Y 276; door handles at X 473-513 / Y 139 and
 X 678-720 / Y 127; side indicator on the fender X 238-282 / Y 152-163; the lower
 door crease runs from about (390, 248) to (590, 230); the shoulder crease (the
 line the door handles sit on) from (380, 156) to (620, 141) - see `shoulder_y`;
-`door_edge()` gives the slant of each door gap. On `rear` the Tesla badge sits
+`door_edge()` gives the slant of each door gap as a straight line; `door_curve()` follows the
+real (slightly curved) gap row by row - use it for anything that must sit on the gap. On `rear` the Tesla badge sits
 at about (200, 90).
 
 ## Stars
@@ -74,8 +75,13 @@ it, so a star on a slanted or gently curved panel keeps its proportions. Only
 whole stars are drawn - a star that would cross a panel gap, an edge, a bend,
 a fold (`carmap.facing_min`: the lip under the spoiler, where the body turns
 under itself and two surfaces share a canvas pixel) or a keep-clear zone
-(`keep_clear`) is left out rather than cut. Stars are never faded: `where=`
-says where the field is, and a star is there in full or not at all.
+(`keep_clear`), the side indicator, or a flank sloped more than about 50
+degrees is left out rather than cut. Stars are never faded: `where=` says
+where the field is, and a star is there in full or not at all; they are
+painted `lit=False`, so the finish does not shade them and every star of a
+design has exactly the same colour. Faces that look at the sky (the `deck`
+canvas: spoiler top, rear-glass frame) get no stars - no direction on them
+reads as 'up' from behind the car.
 
 Measured on the 3D model (every star of every design, mapped through the
 model's own UVs): size within about 1 %, every arm within 2 degrees of where it
@@ -106,7 +112,9 @@ finish)` still support a translucent finish for cars painted silver.)
 
 Tesla accepts 512..1024 px; 1024 x 1024 is the maximum, whatever the file size.
 Within that, `compose()` samples each texel 4 x 4 over its exact footprint on
-the canvas and applies a light unsharp mask. Every texel covers about 5-6 mm of
+the canvas and applies a light unsharp mask; each island's colours are carried 16 px
+past its edge (under alpha 0), so the car's texture filtering never pulls black into
+a seam. Every texel covers about 5-6 mm of
 the car on every panel. `compose.compose_hires()` can render 2048 x 2048 with
 real detail for testing whether a car accepts a larger file.
 

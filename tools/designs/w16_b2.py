@@ -36,8 +36,8 @@ def paint_sides() -> dict:
 
     # two straight teal pinstripes just below the shoulder crease, ends cut parallel to the door gaps
     def stripe(off, thick, colour):
-        f = door_edge("front_door_L", "front")
-        r = door_edge("rear_door_L", "rear")
+        f = door_curve("front_door_L", "front")
+        r = door_curve("rear_door_L", "rear")
         ya0, ya1 = float(shoulder_y(X0)) + off, float(shoulder_y(X1)) + off
         xa0 = float(f(ya0)) + 10
         xa1 = float(r(ya1)) - 8
